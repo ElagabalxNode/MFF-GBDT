@@ -22,11 +22,11 @@ def makeEnv():
     if not os.path.exists(expPath):
         os.makedirs(expPath)
 
-    num_classes = 1 #类别数
+    num_classes = 1 # Number of classes
     batch_size = 8
     num_epochs = 100
     lr = 0.001
-    feature_extract = False # 【False】 训练整个网络finetune the whole model | 【True】 提取特征 only update the reshaped layer params
+    feature_extract = False # 【False】 Train the whole network finetune the whole model | 【True】 Extract features only update the reshaped layer params
 
     weightPath = os.path.join(expPath, 'fianlEpochWeights.pth')
     logFilePath = os.path.join(expPath, 'train.log' )
@@ -77,7 +77,7 @@ class myresnet(nn.Module):
         x=self.fc2(x)
         x=self.relu2(x)
         x=self.fc3(x)
-        x = torch.flatten(x) # 回归时加上
+        x = torch.flatten(x) # Add when regression
 
         return x
 
@@ -121,16 +121,16 @@ def train_model(model, dataloaders, loss_fn, optimizer, expPath, num_epochs=5):
                     loss.backward()
                     optimizer.step()
 
-                running_loss += loss.item() * inputs.size(0)  # L1loss默认除了batch_size,
+                running_loss += loss.item() * inputs.size(0)  # L1loss default except batch_size,
 
             print(phase)
-            print('平均绝对误差:',"{:.6f}".format(mean_absolute_error(weight_gt,weight_pr)))
-            print('均方误差mse:', "{:.6f}".format(mean_squared_error(weight_gt,weight_pr)))
-            print('均方根误差rmse:', "{:.6f}".format(mean_squared_error(weight_gt,weight_pr) ** 0.5))
+            print('Mean absolute error (MAE):',"{:.6f}".format(mean_absolute_error(weight_gt,weight_pr)))
+            print('Mean squared error (MSE):', "{:.6f}".format(mean_squared_error(weight_gt,weight_pr)))
+            print('Root mean squared error (RMSE):', "{:.6f}".format(mean_squared_error(weight_gt,weight_pr) ** 0.5))
             print('R2:',"{:.6f}".format(r2_score(weight_gt,weight_pr)))
-            # 回归
+            # Regression
             epoch_loss = running_loss / len(dataloaders[phase].dataset)
-            print("epoch {} Phase {} loss: {}".format(epoch, phase, epoch_loss*1000)) # 一轮的loss
+            print("epoch {} Phase {} loss: {}".format(epoch, phase, epoch_loss*1000)) # One epoch loss
 
             if phase == "val" and epoch_loss < best_loss:
                 best_loss = epoch_loss
@@ -179,20 +179,20 @@ if __name__ == '__main__':
     #                 num_classes, feature_extract, use_pretrained=True)
     # print(model_ft)
     # print(type(model_ft))
-    # # print(model_ft.layer1[0].conv1.weight.requires_grad) #查看模型前面的是否要训练
-    # # print(model_ft.fc.weight.requires_grad) # 查看最后的全连接层是否要训练
+    # # print(model_ft.layer1[0].conv1.weight.requires_grad) # Check if the model before is to be trained
+    # # print(model_ft.fc.weight.requires_grad) # Check if the last fully connected layer is to be trained
     #
-    # # 训练模型
+    # # Train the model
     # model_ft = model_ft.to(device)
     # optimizer = torch.optim.SGD(filter(lambda p: p.requires_grad,
     #                                model_ft.parameters()), lr=learningRate, momentum=0.9)
-    # # loss_fn = nn.CrossEntropyLoss() # 分类损失函数
-    # # loss_fn = nn.MSELoss()   # 回归 均方差损失
+    # # loss_fn = nn.CrossEntropyLoss() # Classification loss function
+    # # loss_fn = nn.MSELoss()   # Regression Mean squared error loss
     # loss_fn = nn.L1Loss()
     # _, ohist, thist = train_model(model_ft, dataloaders_dict, loss_fn, optimizer, num_epochs=num_epochs)
     # torch.save(_.state_dict(), weightPath)
 
-    # 全部重新训练
+    # Re-train the whole model
     model_ft= initialize_model(model_name,
                         num_classes, feature_extract, use_pretrained=False)
     print(model_ft)
@@ -220,7 +220,7 @@ if __name__ == '__main__':
     for x,y in zip(range(1,num_epochs+1),thist):
         plt.text(x,y+0.01,"{:.3}".format(y),ha = 'center',va = 'bottom',fontsize=7)
 
-    plt.ylim((0,1.))# 轴范围
+    plt.ylim((0,1.))# Axis range
     plt.xticks(np.arange(1, num_epochs+1, 1.0))
     plt.legend()
 

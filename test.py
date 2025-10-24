@@ -1,4 +1,4 @@
-# 跑maskrcnn的测试集  获得目标的实例分割图像
+# Run the test set of maskrcnn to obtain the instance segmentation image of the target
 
 import torch
 import utils
@@ -62,7 +62,7 @@ def PredictImg(resDir, path, imgName, model, device):
         # cv2.waitKey(0)
         # cv2.destroyAllWindows()
 
-        if scores[idx] >= 0.90:  # TODO 调高阈值
+        if scores[idx] >= 0.90:  # TODO Increase the threshold
             m_bOk = True
 
             color = colours[random.randrange(0, 10)]
@@ -113,7 +113,7 @@ def PredictImg(resDir, path, imgName, model, device):
 
     # return dst1
 """
-比PredictImg1多做：1、对结果mask做阈值处 2、多存一张图
+More than PredictImg1: 1、Threshold processing of the result mask 2、Save one more image
 """
 def PredictImg2(resDir, path, imgName, model, device):
 
@@ -155,18 +155,18 @@ def PredictImg2(resDir, path, imgName, model, device):
         # cv2.waitKey(0)
         # cv2.destroyAllWindows()
 
-        if scores[idx] >= 0.85:  # TODO 调高阈值
+        if scores[idx] >= 0.85:  # TODO Increase the threshold
             m_bOk = True
 
             color = colours[random.randrange(0, 10)]
 
             mask = masks[idx, 0].mul(255).byte().cpu().numpy()
-            ret,mask= cv2.threshold(np.uint8(mask),100,255,0) # 阈值处理mask
+            ret,mask= cv2.threshold(np.uint8(mask),100,255,0) # Threshold processing mask
 
-            thresh = mask # findContours会消耗mask
-            contours, hierarchy = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE) # 找mask的轮廓
-            cv2.drawContours(dst,contours, -1, color, -1) # 填充轮廓
-            cv2.drawContours(multi_mask,contours, -1, [255], -1) # 填充轮廓
+            thresh = mask # findContours will consume mask
+            contours, hierarchy = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE) # Find the contour of the mask
+            cv2.drawContours(dst,contours, -1, color, -1) # Fill the contour
+            cv2.drawContours(multi_mask,contours, -1, [255], -1) # Fill the contour
 
             # cv2.imshow('dst',dst)
             # cv2.waitKey(0)
@@ -178,16 +178,16 @@ def PredictImg2(resDir, path, imgName, model, device):
             cv2.putText(result,text=name,org=(int(x1.item()),int(y1.item())+10), fontFace=cv2.FONT_HERSHEY_SIMPLEX,
                         fontScale=0.5, thickness=1, lineType=cv2.LINE_AA,color=color)
 
-            dst1 = cv2.addWeighted(result, 0.7, dst, 0.3, 0) # 掩膜和框和文字，融合到原图result上
+            dst1 = cv2.addWeighted(result, 0.7, dst, 0.3, 0) # The mask, box and text are merged into the original image result
 
-            cv2.imwrite(os.path.join(resDir,'mask',imgName.split('.png')[0] + '-' + str(idx) + '.png'), mask) # 保存源mask
+            cv2.imwrite(os.path.join(resDir,'mask',imgName.split('.png')[0] + '-' + str(idx) + '.png'), mask) # Save the source mask
 
-            ret,mask= cv2.threshold(np.uint8(mask),100,255,0) # 阈值处理mask
+            ret,mask= cv2.threshold(np.uint8(mask),100,255,0) # Threshold processing mask
             mask = np.dstack((mask,mask,mask))
             # print(type(mask),mask.shape)
-            maskImg = cv2.bitwise_and(oImg,mask) #掩膜处理原图
+            maskImg = cv2.bitwise_and(oImg,mask) # Mask processing the original image
 
-            cv2.imwrite(os.path.join(resDir,'maskImg',imgName.split('.png')[0] + '-' + str(idx) + '.png'), maskImg)  # 保存原图
+            cv2.imwrite(os.path.join(resDir,'maskImg',imgName.split('.png')[0] + '-' + str(idx) + '.png'), maskImg)  # Save the original image
 
             # print(masks[idx,0])
 
@@ -201,8 +201,8 @@ def PredictImg2(resDir, path, imgName, model, device):
     #     cv2.waitKey(0)
     #     cv2.destroyAllWindows()
 
-    cv2.imwrite(os.path.join(resDir,'target',imgName), dst1) # 保存融合图
-    cv2.imwrite(os.path.join(resDir,imgName), multi_mask) # 保存融合图
+    cv2.imwrite(os.path.join(resDir,'target',imgName), dst1) # Save the fused image
+    cv2.imwrite(os.path.join(resDir,imgName), multi_mask) # Save the fused image
 
     # return dst1
 if __name__ == '__main__':

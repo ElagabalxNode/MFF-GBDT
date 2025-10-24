@@ -82,7 +82,7 @@ def PredictImg(image, model, device):
 
 def main(dataPath, saveModelName, trainValRate):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    num_classes = 2 # 背景也算一类
+    num_classes = 2 # Background is also a class
 
     dataset = PennFudanDataset(dataPath, get_transform(train=True))
     dataset_test = PennFudanDataset(dataPath, get_transform(train=False))
@@ -95,7 +95,7 @@ def main(dataPath, saveModelName, trainValRate):
     #     ]))
     #     21 31  62
     indices = torch.randperm(len(dataset)).tolist()
-    valLen = int(len(dataset)*trainValRate) # 验证集大小
+    valLen = int(len(dataset)*trainValRate) # The size of the validation set
     dataset = torch.utils.data.Subset(dataset, indices[:-valLen])
     dataset_test = torch.utils.data.Subset(dataset_test, indices[-valLen:])
 
@@ -124,13 +124,13 @@ def main(dataPath, saveModelName, trainValRate):
         lr_scheduler.step()
         evaluate(model, data_loader_test, device)
         if (epoch+1) % 10 == 0 :
-            print("保存模型开始。。。")
+            print("Save model started。。。")
             torch.save(model.state_dict(), saveModelName+ str(epoch+1)+'.pth')
-            print("保存模型完成。。。")
+            print("Save model completed。。。")
 
-    # print("保存模型开始。。。")
+    # print("Save model started。。。")
     # torch.save(model.state_dict(), saveModelName + str(num_epochs)+'.pth')
-    # print("保存模型完成。。。")
+    # print("Save model completed。。。")
     # utils.save_on_master(
     #     {'model': model.state_dict()},
     #     os.path.join('./', '105model.pth')

@@ -16,27 +16,27 @@ df_train = pd.read_csv('GBDT/csvData/20210206-200-1198-manuals/20210206-1198-nor
 # df_test = pd.read_csv('GBDT/csvData/20210206-200-1198-manuals/20210206-1198-test-0.2.csv')
 df_test = pd.read_csv('GBDT/csvData/20210206-200-1198-manuals/20210206-1198-normal-test-0.2.csv')
 
-ss = StandardScaler() # 标准化
-# ss = MinMaxScaler() # 归一化
+ss = StandardScaler() # Standardization
+# ss = MinMaxScaler() # Normalization
 # ss = MaxAbsScaler()
 
-# 2D + 3D 特征
-y_train = df_train['weight'] # 获取训练集的y
-x_train = df_train.drop(['weight','imgName'],axis=1) # 获得训练集的x  1 按列舍弃
-# x_train = df_train.drop(['weight','imgName','equi_diameter'],axis=1) # 获得训练集的x  1 按列舍弃
-y_test = df_test['weight'] # 获取测试集的y
-x_test = df_test.drop(['weight','imgName'],axis=1) # 获取测试集的x
-# x_test = df_test.drop(['weight','imgName','equi_diameter'],axis=1) # 获取测试集的x
+# 2D + 3D features
+y_train = df_train['weight'] # Get training set y
+x_train = df_train.drop(['weight','imgName'],axis=1) # Get training set x, 1 means drop by column
+# x_train = df_train.drop(['weight','imgName','equi_diameter'],axis=1) # Get training set x, 1 means drop by column
+y_test = df_test['weight'] # Get test set y
+x_test = df_test.drop(['weight','imgName'],axis=1) # Get test set x
+# x_test = df_test.drop(['weight','imgName','equi_diameter'],axis=1) # Get test set x
 # y_val = df_val['weight']
 # x_val = df_val.drop(['weight','imgName','equi_diameter'],axis=1)
 
-#  2D特征
+# 2D features
 # x_train = pd.DataFrame(x_train.values[:, 0:15])
 # #x_val = pd.DataFrame(x_val.values[:, 0:15])
 # x_test = pd.DataFrame(x_test.values[:, 0:15])
 # print(x_train.shape,x_test.shape)
 
-#  3D特征
+# 3D features
 # x_train = pd.DataFrame(x_train.values[:, 15:24])
 # #x_val = pd.DataFrame(x_val.values[:, 15:24])
 # x_test = pd.DataFrame(x_test.values[:, 15:24])
@@ -100,16 +100,16 @@ loss = loss_fn(torch.Tensor(test_result), y_test).item()
 
 # train_loss = loss_fn(result_train, y_train).item()
 # print("train:")
-# print("测试MAE：{:.6f}".format(train_loss))
+# print("Testing MAE: {:.6f}".format(train_loss))
 
 
 
 # bigErr = []
 # # errPath = '../data/testBigErrImg/'
-# errPath = '../data/trainBigErrImg/' #  筛选训练的
-# df_test = df_train  #  筛选训练的
+# errPath = '../data/trainBigErrImg/' # Select training data
+# df_test = df_train  # Select training data
 # for i in range(len(res)) :
-#     if res[i] > 0.05:  # 误差大于100g的
+#     if res[i] > 0.05:  # Error greater than 100g
 #         print(df_test.loc[i])
 #         print(df_test.loc[i,'imgName']," ",res[i])
 #         bigErr.append(res[i])
@@ -122,26 +122,26 @@ loss = loss_fn(torch.Tensor(test_result), y_test).item()
 # print(np.sort(res))
 #
 # print(np.argmax(res))
-print("测试MAE：{:.6f}".format(loss))
-# print('最大误差的预测值：',testY[np.argmax(res)])
+print("Testing MAE: {:.6f}".format(loss))
+# print('Maximum error prediction value:',testY[np.argmax(res)])
 # print('实际值',y_test[np.argmax(res)])
 
-#训练集上：
-# print('平均绝对误差:',mean_absolute_error(y_train,preds))
-# print('均方误差mse:', mean_squared_error(y_train, preds))
-# print('均方根误差rmse:', mean_squared_error(y_train, preds) ** 0.5)
-# print('R2:',r2_score(y_train,preds))
+# On the training set:
+# print('Mean absolute error (MAE):',mean_absolute_error(y_train,preds))
+# print('Mean squared error (MSE):', mean_squared_error(y_train, preds))
+# print('Root mean squared error (RMSE):', mean_squared_error(y_train, preds) ** 0.5)
+# print('R^2 Score:',r2_score(y_train,preds))
 # print()
 
-#测试集上
-# print('平均绝对误差:',mean_absolute_error(test_result.numpy(),y_test.numpy()))
-# print('均方误差mse:', mean_squared_error(test_result.numpy(),y_test.numpy()))
-# print('均方根误差rmse:', mean_squared_error(test_result.numpy(),y_test.numpy()) ** 0.5)
-# print('R2:',r2_score(test_result.numpy(),y_test.numpy()))
+# On the test set:
+# print('Mean absolute error (MAE):',mean_absolute_error(test_result.numpy(),y_test.numpy()))
+# print('Mean squared error (MSE):', mean_squared_error(test_result.numpy(),y_test.numpy()))
+# print('Root mean squared error (RMSE):', mean_squared_error(test_result.numpy(),y_test.numpy()) ** 0.5)
+# print('R^2 Score:',r2_score(test_result.numpy(),y_test.numpy()))
 
-print('平均绝对误差:',mean_absolute_error(test_result,y_test.numpy()))
-print('均方根误差rmse:', mean_squared_error(test_result,y_test.numpy()) ** 0.5)
-print('R2:',r2_score(test_result,y_test.numpy()))
+print('Mean absolute error (MAE):',mean_absolute_error(test_result,y_test.numpy()))
+print('Root mean squared error (RMSE):', mean_squared_error(test_result,y_test.numpy()) ** 0.5)
+print('R^2 Score:',r2_score(test_result,y_test.numpy()))
 
 
 y_test=y_test.numpy()
@@ -177,7 +177,7 @@ for i in range(len(y_test)):
         end = end + inteval
 
 for j in range(5):
-    print('平均绝对误差:',j,mean_absolute_error(class_results[j][0],class_results[j][1]),"数量：",len(class_results[j][1]))
+    print('Mean absolute error (MAE):',j,mean_absolute_error(class_results[j][0],class_results[j][1]),"Count:",len(class_results[j][1]))
 
 print(class_results[4])
 

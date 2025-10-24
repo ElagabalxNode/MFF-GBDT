@@ -11,14 +11,13 @@ from sklearn.metrics import mean_absolute_error
 
 
 
-# df_test = pd.read_csv('GBDT/csvData/20210206-200-1198-manuals/20210206-1198-test-0.2.csv')#手工特征
-df_test = pd.read_csv('GBDT/csvData/20210206-200-1198-manuals/20210206-1198-normal-test-0.2.csv')# 归一化手工特征
+# df_test = pd.read_csv('GBDT/csvData/20210206-200-1198-manuals/20210206-1198-test-0.2.csv')# manual features
+df_test = pd.read_csv('GBDT/csvData/20210206-200-1198-manuals/20210206-1198-normal-test-0.2.csv') # normalized manual features
 
-
-# y_train = df_train['weight'] # 获取训练集的y
-# x_train = df_train.drop(['weight','imgName','equi_diameter'],axis=1) # 获得训练集的x  1 按列舍弃
-x_test = df_test.drop(['weight','imgName'],axis=1) # 获取测试集的x
-y_test = df_test['weight'] # 获取测试集的y
+# y_train = df_train['weight'] # get y for the training set
+# x_train = df_train.drop(['weight','imgName','equi_diameter'],axis=1) # get x for the training set, 1 means drop by column
+x_test = df_test.drop(['weight', 'imgName'], axis=1) # get x for the test set
+y_test = df_test['weight'] # get y for the test set
 # print(x_test['ellipse_long'])
 
 # 2D特征
@@ -49,13 +48,13 @@ print(len(features))
 
 preds = pkl_bst.predict(x_test)
 
-print('平均绝对误差mae:',mean_absolute_error(y_test,preds))
-print('均方误差mse:', mean_squared_error(y_test, preds))
-print('均方根误差mse:', np.sqrt(mean_squared_error(y_test, preds)))
-print('r2:', r2_score(y_test, preds))
+print('Mean Absolute Error (MAE):', mean_absolute_error(y_test, preds))
+print('Mean Squared Error (MSE):', mean_squared_error(y_test, preds))
+print('Root Mean Squared Error (RMSE):', np.sqrt(mean_squared_error(y_test, preds)))
+print('R^2 Score:', r2_score(y_test, preds))
 
 
-#保存预测结果
+# Save prediction results
 # resList = []
 # for p in preds:
 #     resList.append(str(p)+'\n')
@@ -66,7 +65,7 @@ print('r2:', r2_score(y_test, preds))
 # plt.show()
 
 
-# 计算5个区间各自的mae
+# Calculate the MAE for each of the 5 intervals
 y_test=y_test.to_numpy()
 print(len(y_test))
 print(len(preds))
@@ -102,7 +101,7 @@ for i in range(len(y_test)):
 
 
 for j in range(5):
-    print('平均绝对误差:',j,mean_absolute_error(class_results[j][0],class_results[j][1]),"数量：",len(class_results[j][1]))
+    print('Mean Absolute Error:', j, mean_absolute_error(class_results[j][0], class_results[j][1]), "Count:", len(class_results[j][1]))
 
 print(class_results[4])
 

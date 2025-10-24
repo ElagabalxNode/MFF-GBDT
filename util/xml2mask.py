@@ -6,7 +6,7 @@ import numpy as np
 from lxml import etree
 from tqdm import tqdm
 
-# 创建新目录并递归删除现有目录内容的有用功能：
+# Useful function to create a new directory and recursively delete the existing directory content:
 def dir_create(path):
     # if (os.path.exists(path)) and (os.listdir(path) != []):
     #     shutil.rmtree(path)
@@ -14,7 +14,7 @@ def dir_create(path):
     if not os.path.exists(path):
         os.makedirs(path)
 
-# 该脚本的参数是以下数据：输入图像的目录，带有XML格式的CVAT批注的输入文件，输出蒙版的目录和图像的比例因子。 从命令行解析参数的函数：
+# The parameters of this script are the following data: input image directory, input file with CVAT annotations in XML format, output mask directory and image scale factor. Function to parse arguments from the command line:
 def parse_args():
     parser = argparse.ArgumentParser(
         fromfile_prefix_chars='@',
@@ -87,7 +87,7 @@ def create_mask_file(width, height, bitness, background, shapes, scale_factor):
 
     return mask
 
-# 最后，主要功能是：
+# Finally, the main function is:
 def main():
     args = parse_args()
     dir_create(args.output_dir)
@@ -116,13 +116,13 @@ def main():
             cv2.imwrite(output_path, background)
 
 
-# 当我们将文件作为命令执行到python解释器时，我们必须添加以下构造：
+# When we execute the file as a command to the python interpreter, we must add the following construction:
 if __name__ == "__main__":
     main()
 
 
 
-# 要运行脚本，您应该运行以下命令(在标记后不调整图像大小时，默认比例因子为1)：
+# To run the script, you should run the following command (the default scale factor is 1 after marking without adjusting the image size):
 
 # python xml2mask.py --image-dir original_images_dir --cvat-xml cvat.xml --output-dir masks_dir --scale-factor 0.4
 

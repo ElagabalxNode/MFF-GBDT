@@ -23,7 +23,7 @@ def makeEnv():
     if not os.path.exists(expPath):
         os.makedirs(expPath)
 
-    num_classes = 1 #类别数
+    num_classes = 1 # Number of classes
     batch_size = 8 #
     num_epochs = 200
     lr = 0.001
@@ -44,7 +44,7 @@ def get_manual_features():
     logger('csv_path: '+csv_path+'\n')
     df = pd.read_csv(csv_path,index_col='imgName')
     print(df.head())
-    # df = df.drop(['weight'],axis=1) # 获得训练集的x  1 按列舍弃  normal的已经舍弃了
+    # df = df.drop(['weight'],axis=1) # Get training set x, 1 means drop by column normal is already dropped
     print(type(df.loc['1.1_Depth-0.png']))
     return df
 
@@ -78,13 +78,13 @@ def train_fc(model,x_train,y_train,x_test,y_test,loss_fn,
 
 
         print('train:')
-        # 回归
+        # Regression
         epoch_loss = running_loss / len(x_train)
         print("epoch {} Phase {} loss: {}".format(epoch, 'train', epoch_loss*1000)) # 一轮的loss
-        print('平均绝对误差:',"{:.6f}".format(mean_absolute_error(y_train_copy.cpu().numpy(),weight_pr)))
-        print('均方误差mse:', "{:.6f}".format(mean_squared_error(y_train_copy.cpu().numpy(),weight_pr)))
-        print('均方根误差rmse:', "{:.6f}".format(mean_squared_error(y_train_copy.cpu().numpy(),weight_pr) ** 0.5))
-        print('R2:',"{:.6f}".format(r2_score(y_train_copy.cpu().numpy(),weight_pr)))
+        print('Mean absolute error (MAE):',"{:.6f}".format(mean_absolute_error(y_train_copy.cpu().numpy(),weight_pr)))
+        print('Mean squared error (MSE):', "{:.6f}".format(mean_squared_error(y_train_copy.cpu().numpy(),weight_pr)))
+        print('Root mean squared error (RMSE):', "{:.6f}".format(mean_squared_error(y_train_copy.cpu().numpy(),weight_pr) ** 0.5))
+        print('R^2 Score:',"{:.6f}".format(r2_score(y_train_copy.cpu().numpy(),weight_pr)))
 
 
         # Find loss on val data
@@ -92,10 +92,10 @@ def train_fc(model,x_train,y_train,x_test,y_test,loss_fn,
         loss = loss_fn(val_outputs, y_test).item()
         print('val:')
         print('Epoch:', epoch, 'val loss:', loss)
-        print('平均绝对误差:',"{:.6f}".format(mean_absolute_error(val_outputs.cpu().detach().numpy(),y_test.cpu().detach().numpy())))
-        print('均方误差mse:', "{:.6f}".format(mean_squared_error(val_outputs.cpu().detach().numpy(),y_test.cpu().detach().numpy())))
-        print('均方根误差rmse:', "{:.6f}".format(mean_squared_error(val_outputs.cpu().detach().numpy(),y_test.cpu().detach().numpy()) ** 0.5))
-        print('R2:',"{:.6f}\n".format(r2_score(val_outputs.cpu().detach().numpy(),y_test.cpu().detach().detach().numpy())))
+        print('Mean absolute error (MAE):',"{:.6f}".format(mean_absolute_error(val_outputs.cpu().detach().numpy(),y_test.cpu().detach().numpy())))
+        print('Mean squared error (MSE):', "{:.6f}".format(mean_squared_error(val_outputs.cpu().detach().numpy(),y_test.cpu().detach().numpy())))
+        print('Root mean squared error (RMSE):', "{:.6f}".format(mean_squared_error(val_outputs.cpu().detach().numpy(),y_test.cpu().detach().numpy()) ** 0.5))
+        print('R^2 Score:',"{:.6f}\n".format(r2_score(val_outputs.cpu().detach().numpy(),y_test.cpu().detach().detach().numpy())))
 
         if loss < best_loss:
             best_loss = loss
@@ -105,26 +105,26 @@ def train_fc(model,x_train,y_train,x_test,y_test,loss_fn,
                 savePath = expPath +'/' + str(bestEpoch) + '-l' + str(best_loss)+ '-Weights.pth'
                 torch.save(best_model_wts, savePath)
 
-    print('训练MAE：{:.6f}'.format(best_loss))
-    print('最佳轮次：',bestEpoch)
+    print('Training MAE:{:.6f}'.format(best_loss))
+    print('Best epoch:',bestEpoch)
 
     #
     # model.load_state_dict(torch.load(bestPath, map_location='cpu'))
     # with torch.no_grad():
     #     testY = model(x_test)
-    # #测试集上
-    # print('平均绝对误差:',mean_absolute_error(testY.numpy(),y_test.numpy()))
-    # print('均方误差mse:', mean_squared_error(testY.numpy(),y_test.numpy()))
-    # print('均方根误差rmse:', mean_squared_error(testY.numpy(),y_test.numpy()) ** 0.5)
-    # print('R2:',r2_score(testY.numpy(),y_test.numpy()))
+    # #On the test set:
+    # print('Mean absolute error (MAE):',mean_absolute_error(testY.numpy(),y_test.numpy()))
+    # print('Mean squared error (MSE):', mean_squared_error(testY.numpy(),y_test.numpy()))
+    # print('Root mean squared error (RMSE):', mean_squared_error(testY.numpy(),y_test.numpy()) ** 0.5)
+    # print('R^2 Score:',r2_score(testY.numpy(),y_test.numpy()))
 
 
 def before_train_fc():
-    # 原始的数据：
+    # Original data:
     train_data_path = 'GBDT/csvData/20210206-200-1198-manuals/20210206-1198-train-0.8.csv'
     test_data_path = 'GBDT/csvData/20210206-200-1198-manuals/20210206-1198-test-0.2.csv'
 
-    # 归一化后的数据：
+    # Normalized data:
     # train_data_path = 'GBDT/csvData/20210206-200-1198-manuals/20210206-1198-normal-train-0.8.csv'
     # test_data_path = 'GBDT/csvData/20210206-200-1198-manuals/20210206-1198-normal-test-0.2.csv'
     logger('train_data_path: '+train_data_path+'\ntest_data_path: '+ test_data_path+'\n')
@@ -135,34 +135,34 @@ def before_train_fc():
     df_test = pd.read_csv(test_data_path)
 
 
-    # 2D + 3D 特征
-    y_train = df_train['weight'] # 获取训练集的y
-    x_train = df_train.drop(['weight','imgName'],axis=1) # 获得训练集的x  1 按列舍弃
-    y_test = df_test['weight'] # 获取测试集的y
-    x_test = df_test.drop(['weight','imgName'],axis=1) # 获取测试集的x
+    # 2D + 3D features
+    y_train = df_train['weight'] # Get training set y
+    x_train = df_train.drop(['weight','imgName'],axis=1) # Get training set x, 1 means drop by column
+    y_test = df_test['weight'] # Get test set y
+    x_test = df_test.drop(['weight','imgName'],axis=1) # Get test set x
     # y_val = df_val['weight']
     # x_val = df_val.drop(['weight','imgName'],axis=1)
-    logger("使用全部特征\n")
+    logger("Using all features\n")
 
-    #  2D特征
+    #  2D features
     # x_train = pd.DataFrame(x_train.values[:, 0:15])
     # x_val = pd.DataFrame(x_val.values[:, 0:15])
     # x_test = pd.DataFrame(x_test.values[:, 0:15])
     # print(x_train.shape,x_test.shape)
-    # logger("只使用2D特征\n")
+    # logger("Using only 2D features\n")
 
-    # #  3D特征
+    # #  3D features
     # x_train = pd.DataFrame(x_train.values[:, 15:24])
     # x_val = pd.DataFrame(x_val.values[:, 15:24])
     # x_test = pd.DataFrame(x_test.values[:, 15:24])
     # print(x_train.shape,x_test.shape)
-    # logger("只使用3D特征\n")
+    # logger("Using only 3D features\n")
 
-    #  自动特征
+    #  Automatic features
     # x_train = pd.DataFrame(x_train.values[:, 26:2074])
     # x_test = pd.DataFrame(x_test.values[:, 26:2074])
     # x_val = pd.DataFrame(x_val.values[:, 26:2074])
-    # logger("只使用自动特征\n")
+    # logger("Using only automatic features\n")
 
     x_train = torch.from_numpy(x_train.values).float().cuda()
     y_train = torch.from_numpy(y_train.values).float().cuda()

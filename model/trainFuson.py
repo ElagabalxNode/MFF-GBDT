@@ -23,20 +23,20 @@ def logger(log_str):
 def makeEnv():
     global logFilePath
     expName = 'train_fusonnet'
-    model_name = 'fusonnet_unfizze'
+    model_name = 'fusonnet_unfizze' # Model name
     nowTime = time.strftime("%Y-%m-%d %H-%M", time.localtime())
     expPath = os.path.join('exps',expName,nowTime)
     if not os.path.exists(expPath):
         os.makedirs(expPath)
 
-    num_classes = 1 #类别数
+    num_classes = 1 # Number of classes
     batch_size = 8 #
     num_epochs = 150
     lr = 0.001
-    fizze_resnet = True
+    fizze_resnet = True # Whether to freeze the resnet parameters
     weightPath = os.path.join(expPath, 'fianlEpochWeights.pth')
     logFilePath = os.path.join(expPath, 'log.txt' )
-    init_resnet_weightPath = "exps/myresnet/2021-12-14 22-19/epoch-50-0.14810015708208085-Weights.pth"
+    init_resnet_weightPath = "exps/myresnet/2021-12-14 22-19/epoch-50-0.14810015708208085-Weights.pth" # Resnet weights file
 
     log_str = "model_name " + model_name + '\n' + \
               "num_classes " + str(num_classes) + '\n' \
@@ -67,7 +67,7 @@ class myresnet(nn.Module):
         x=self.fc2(x)
         x=self.relu2(x)
         x=self.fc3(x)
-        x = torch.flatten(x) # 回归时加上
+        x = torch.flatten(x) # Add when regression
 
         return x
 class myresnet_base(nn.Module):
@@ -88,7 +88,7 @@ class myresnet_base(nn.Module):
         x=self.fc2(x)
         x=self.relu2(x)
         x=self.fc3(x)
-        x = torch.flatten(x) # 回归时加上
+        x = torch.flatten(x) # Add when regression
 
         return x
 class fusonnet_tiny(nn.Module):
@@ -106,7 +106,7 @@ class fusonnet_tiny(nn.Module):
         x=self.fc2(x)
         x=self.relu2(x)
         x=self.fc3(x)
-        x = torch.flatten(x) # 回归时加上
+        x = torch.flatten(x) # Add when regression
         return x
 class fusonnet_Base(nn.Module):
     def __init__(self):
@@ -123,7 +123,7 @@ class fusonnet_Base(nn.Module):
         x=self.fc2(x)
         x=self.relu2(x)
         x=self.fc3(x)
-        x = torch.flatten(x) # 回归时加上
+        x = torch.flatten(x) # Add when regression
         return x
 
 def get_manual_features():
@@ -132,7 +132,7 @@ def get_manual_features():
     logger('csv_path: '+csv_path+'\n')
     df = pd.read_csv(csv_path,index_col='imgName')
     print(df.head())
-    # df = df.drop(['weight'],axis=1) # 获得训练集的x  1 按列舍弃  normal的已经舍弃了
+    # df = df.drop(['weight'],axis=1) # Get training set x, 1 means drop by column normal is already dropped
 
     print(type(df.loc['1.1_Depth-0.png']))
     return df
@@ -164,7 +164,7 @@ def train_model(model, dataloaders, loss_fn, optimizer,scheduler, expPath, devic
                 # print(labels.size())
                 # print(inputs.size())
 
-                # 处理路径，path，读取 25个手工参数，丢进去训练
+                # Process the path, path, read 25 manual parameters, throw them into training
                 # print(path)
                 manual_features = []
                 # print(path)
@@ -199,22 +199,22 @@ def train_model(model, dataloaders, loss_fn, optimizer,scheduler, expPath, devic
             val_MAE = mean_absolute_error(weight_gt,weight_pr)
 
             log_str = phase +'：\n' \
-                '平均绝对误差: {:.6f}\n' \
-                '均方误差mse: {:.6f}\n' \
-                '均方根误差rmse: {:.6f}\n' \
+                'Mean absolute error (MAE): {:.6f}\n' \
+                'Mean squared error (MSE): {:.6f}\n' \
+                'Root mean squared error (RMSE): {:.6f}\n' \
                 'R2: {:.6f}\n'.format(mean_absolute_error(weight_gt,weight_pr),mean_squared_error(weight_gt, weight_pr),
                                       mean_squared_error(weight_gt, weight_pr) ** 0.5, r2_score(weight_gt,weight_pr))
             print(log_str),logger(log_str)
-            # 回归
+            # Regression
             epoch_loss = running_loss / len(dataloaders[phase].dataset)
             log_str = "epoch {} Phase {} loss: {}\n\n".format(epoch, phase, epoch_loss*1000)
-            print(log_str),logger(log_str) # 一轮的loss
+            print(log_str),logger(log_str) # One epoch loss
 
             # if phase == "val" and epoch_loss < best_loss:
             #     best_loss = epoch_loss
             #     best_model_wts = copy.deepcopy(model.state_dict())
             #     torch.save(best_model_wts, expPath + '/epoch-' + str(epoch) + '-' + str(best_loss) + '-Weights.pth')
-            if phase == "val" and val_MAE < mini_MAE: # 不是val阶段，直接短路
+            if phase == "val" and val_MAE < mini_MAE: # Not val phase, short circuit
                 mini_MAE = val_MAE
                 best_model_wts = copy.deepcopy(model.state_dict())
                 torch.save(best_model_wts, expPath + '/epoch-' + str(epoch) + '-' + str(mini_MAE) + '-Weights.pth')
@@ -224,7 +224,7 @@ def train_model(model, dataloaders, loss_fn, optimizer,scheduler, expPath, devic
             if phase == 'train':
                 train_acc_history.append(epoch_loss)
 
-    logger('mini_loss: '+str(mini_MAE)+'\n')
+    logger('mini_loss: '+str(mini_MAE)+'\n') # Minimum loss
     model.load_state_dict(best_model_wts)
     return model, val_acc_history, train_acc_history
 
@@ -234,7 +234,7 @@ def fizze_resnet_parameter(model, fizze_resnet):
         keylist = ['fc.weight', 'fc.bias', 'fc2.weight', 'fc2.bias', 'fc3.weight', 'fc3.bias']
         for name, param in model.named_parameters():
             if name not in keylist:
-                param.requires_grad = False  # param.requires_grad == False 的参数不训练
+                param.requires_grad = False  # Parameters with param.requires_grad == False are not trained
                 # print(name)
 
 def init_Fusonmodel(fusonnet, weightPath, fizze_resnet):
@@ -246,19 +246,19 @@ def init_Fusonmodel(fusonnet, weightPath, fizze_resnet):
     fusonnet_dict = fusonnet.state_dict()
     print(model_pretrained.state_dict().keys())
     print()
-    # 将model_pretrained的建与自定义模型的建进行比较，剔除不同的
-    pretrained_dict = {k[9:]: v for k, v in model_pretrained.state_dict().items() if k.startswith('model_ft.')} # 拿到 前面的参数
+    # Compare the parameters of model_pretrained with the custom model, and remove the different ones
+    pretrained_dict = {k[9:]: v for k, v in model_pretrained.state_dict().items() if k.startswith('model_ft.')} # Get the parameters before
     pretrained_dict.pop('fc.weight')
-    pretrained_dict.pop('fc.bias')  # 去掉参数不一样的第一层fa的参数
+    pretrained_dict.pop('fc.bias')  # Remove the parameters of the first layer fa that are different
     print(pretrained_dict.keys())
-    # 更新现有的model_dict
+    # Update the existing model_dict
     fusonnet_dict.update(pretrained_dict)
 
-    # 加载我们真正需要的state_dict
+    # Load the state_dict we really need
     fusonnet.load_state_dict(fusonnet_dict)
 
     if fizze_resnet:
-        # 只更新后面的FC层，其他的设置成False，冻住前面的参数
+        # Only update the FC layers after, set the other parameters to False, freeze the parameters before
         fizze_resnet_parameter(fusonnet, True)
 
     return  fusonnet

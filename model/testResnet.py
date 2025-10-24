@@ -22,11 +22,11 @@ def makeEnv():
     if not os.path.exists(expPath):
         os.makedirs(expPath)
 
-    num_classes = 1 #类别数
+    num_classes = 1 # Number of classes
     batch_size = 8
     num_epochs = 100
     lr = 0.001
-    feature_extract = False # 【False】 训练整个网络finetune the whole model | 【True】 提取特征 only update the reshaped layer params
+    feature_extract = False # 【False】 Train the whole network finetune the whole model | 【True】 Extract features only update the reshaped layer params
 
     weightPath = os.path.join(expPath, 'fianlEpochWeights.pth')
     logFilePath = os.path.join(expPath, 'train.log' )
@@ -63,7 +63,7 @@ class myresnet(nn.Module):
         x=self.fc2(x)
         x=self.relu2(x)
         x=self.fc3(x)
-        x = torch.flatten(x) # 回归时加上
+        x = torch.flatten(x) # Add when regression
 
         return x
 class myresnet_base(nn.Module):
@@ -86,7 +86,7 @@ class myresnet_base(nn.Module):
         x=self.fc2(x)
         x=self.relu2(x)
         x=self.fc3(x)
-        x = torch.flatten(x) # 回归时加上
+        x = torch.flatten(x) # Add when regression
 
         return x
 def test_model(model, dataloaders, expPath, device):
@@ -101,8 +101,8 @@ def test_model(model, dataloaders, expPath, device):
             weight_gt.extend(labels_gt)
             inputs, labels= inputs.to(device), labels.to(device)
 
-            # inputs 是图片，labels是体重，path 是路径
-            # 处理路径，path，读取 25个手工参数，丢进去训练
+            # inputs is the picture, labels is the weight, path is the path
+            # Process the path, path, read 25 manual parameters, throw them into training
             # print(path)
             path = path[0].split('/')[-1]
             # print(path)
@@ -151,7 +151,7 @@ def before_test_resnet():
     test_model(resnet, dataloaders_dict, expPath, device)
 
 def make_pth():
-    """还原resnet权重文件，带上前缀“model_ft.”"""
+    """Restore resnet weights file, add prefix "model_ft.""""
     weightPath = "exps/myresnet/2021-12-11 01-48/epoch-95-0.15137851883967718-Weights.pth"
 
     pth = torch.load(weightPath, map_location='cpu')

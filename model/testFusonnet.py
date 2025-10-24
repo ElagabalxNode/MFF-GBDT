@@ -31,8 +31,8 @@ def makeEnv():
     if not os.path.exists(expPath):
         os.makedirs(expPath)
 
-    num_classes = 1 #类别数
-    batch_size = 8 # batch_size 只能设为1，一次传一个图片的手工进去的
+    num_classes = 1 # Number of classes
+    batch_size = 8 # batch_size can only be set to 1, one picture at a time, one manual feature at a time, one time
 
     log_str = "model_name " + model_name + '\n' + \
               "num_classes " + str(num_classes) + '\n' \
@@ -47,7 +47,7 @@ def get_manual_features():
     df = pd.read_csv(csv_path,index_col='imgName')
     logger('csv_path: '+csv_path+'\n')
     # print(df.head())
-    # df = df.drop(['weight'],axis=1) # 获得训练集的x  1 按列舍弃  normal的已经舍弃了
+    # df = df.drop(['weight'],axis=1) # Get training set x, 1 means drop by column  normal features are already dropped
     # print(type(df.loc['1.1_Depth-0.png']))
     return df
 
@@ -70,8 +70,8 @@ def save_auto_features(model, dataloaders, expPath, device):
                 labels_str = str(labels.item())
                 inputs, labels= inputs.to(device), labels.to(device)
 
-                # inputs 是图片，labels是体重，path 是路径
-                # 处理路径，path，读取 25个手工参数，丢进去训练
+                # inputs is the picture, labels is the weight, path is the path
+                # Process the path, path, read 25 manual parameters, throw them into training
                 # print(path)
                 path = path[0].split('/')[-1]
                 # print(path)
@@ -109,8 +109,8 @@ def test_model(model, dataloaders, expPath, device):
             weight_gt.extend(labels_gt)
             inputs, labels= inputs.to(device), labels.to(device)
 
-            # inputs 是图片，labels是体重，path 是路径
-            # 处理路径，path，读取 25个手工参数，丢进去训练
+            # inputs is the picture, labels is the weight, path is the path
+            # Process the path, path, read 25 manual parameters, throw them into training
             manual_features = []
             # print(path)
             for p in range(len(path)):
@@ -135,9 +135,9 @@ def test_model(model, dataloaders, expPath, device):
             # print(type(weight_gt),type(weight_pr))
             # exit()
         log_str = phase +'：\n' \
-                '平均绝对误差: {:.6f}\n' \
-                '均方误差mse: {:.6f}\n' \
-                '均方根误差rmse: {:.6f}\n' \
+                'Mean absolute error (MAE): {:.6f}\n' \
+                'Mean squared error (MSE): {:.6f}\n' \
+                'Root mean squared error (RMSE): {:.6f}\n' \
                 'R2: {:.6f}\n'.format(mean_absolute_error(weight_gt,weight_pr),mean_squared_error(weight_gt, weight_pr),
                                       mean_squared_error(weight_gt, weight_pr) ** 0.5, r2_score(weight_gt,weight_pr))
         print(log_str),logger(log_str)
@@ -219,9 +219,9 @@ def combineBPandGBDT():
     # GBDT_test_df.to_csv(expPath + '/combined_result.csv')
     GBDT_test_df.to_csv('exps/test_fusonnet/2021-12-16 22-37/combined_result.csv')
 
-    log_str = '平均绝对误差: {:.6f}\n' \
-                '均方误差mse: {:.6f}\n' \
-                '均方根误差rmse: {:.6f}\n' \
+    log_str = 'Mean Absolute Error (MAE): {:.6f}\n' \
+                'Mean squared error (MSE): {:.6f}\n' \
+                'Root mean squared error (RMSE): {:.6f}\n' \
                 'R2: {:.6f}\n'.format(mean_absolute_error(GBDT_test_df['cb'].values,GBDT_test_df['gt'].values),mean_squared_error(GBDT_test_df['cb'].values,GBDT_test_df['gt'].values),
                                       mean_squared_error(GBDT_test_df['cb'].values,GBDT_test_df['gt'].values) ** 0.5, r2_score(GBDT_test_df['cb'].values,GBDT_test_df['gt'].values))
     print(log_str),logger(log_str)
