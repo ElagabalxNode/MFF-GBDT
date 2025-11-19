@@ -1,0 +1,17 @@
+# Core deep learning frameworks
+torch>=2.0.0
+torchvision>=0.15.0
+
+# Computer vision and image processing
+opencv-python>=4.8.0
+Pillow>=10.0.0
+
+# Scientific computing
+numpy>=1.24.0
+
+# COCO evaluation tools
+pycocotools>=2.0.6
+
+# Progress bars
+tqdm>=4.65.0
+

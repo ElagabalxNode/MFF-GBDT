@@ -41,7 +41,7 @@ class PennFudanDataset(torch.utils.data.Dataset):
         masks = mask == obj_id[:, None, None]  # Even if the image is 8-bit single-channel in "L" mode, PIL still loads it as three channels
 
         # Calculate bounding box coordinates for each mask
-        num_objs= len(obj_id)
+        num_objs = len(obj_id)
         boxes = []
         for i in range(num_objs):
             pos = np.where(masks[i])
@@ -51,10 +51,18 @@ class PennFudanDataset(torch.utils.data.Dataset):
             ymax = np.max(pos[0])
             boxes.append([xmin, ymin, xmax, ymax])
 
-        boxes = torch.as_tensor(boxes, dtype=torch.float32)
-        # The dataset has only one class
-        labels = torch.ones((num_objs,), dtype=torch.int64)
-        masks = torch.as_tensor(masks, dtype=torch.uint8)
+        # Handle case when no objects are found (empty image)
+        # Ensure boxes is always 2D tensor [N, 4] even when N=0
+        if len(boxes) == 0:
+            boxes = torch.zeros((0, 4), dtype=torch.float32)
+            labels = torch.zeros((0,), dtype=torch.int64)
+            masks = torch.zeros((0, mask.shape[0], mask.shape[1]),
+                                dtype=torch.uint8)
+        else:
+            boxes = torch.as_tensor(boxes, dtype=torch.float32)
+            # The dataset has only one class
+            labels = torch.ones((num_objs,), dtype=torch.int64)
+            masks = torch.as_tensor(masks, dtype=torch.uint8)
 
         image_id = torch.tensor([idx])
         area = (boxes[:, 3] - boxes[:, 1]) * (boxes[:, 2] - boxes[:, 0])

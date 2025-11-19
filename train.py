@@ -10,14 +10,14 @@ from torch.utils.data import DataLoader
 
 from engine import train_one_epoch, evaluate
 import transforms as T
-from transforms import  ToTensor,RandomHorizontalFlip,Compose
+from transforms import ToTensor, RandomHorizontalFlip, Compose
 # import torchvision.transforms as T
 # from torchvision.transforms import transforms
 
 def gotoMain():
     # dataPath = 'data/100label'
     # dataPath = 'data/105'
-    dataPath = 'data/105/mixData'
+    dataPath = 'coco_sets/mixData'
     saveModelName = 'weight/205-model-73-'
     trainValRate = 0.2
 
@@ -81,7 +81,16 @@ def PredictImg(image, model, device):
 
 
 def main(dataPath, saveModelName, trainValRate):
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    # Support for Apple Silicon (MPS), CUDA, and CPU
+    if torch.backends.mps.is_available():
+        device = torch.device('mps')
+        print("Using MPS (Apple Silicon GPU)")
+    elif torch.cuda.is_available():
+        device = torch.device('cuda')
+        print("Using CUDA")
+    else:
+        device = torch.device('cpu')
+        print("Using CPU")
     num_classes = 2 # Background is also a class
 
     dataset = PennFudanDataset(dataPath, get_transform(train=True))
