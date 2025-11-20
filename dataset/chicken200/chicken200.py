@@ -31,6 +31,16 @@ def data_split():
     trainset,testset = train_test_split(dataset,test_size=0.2,random_state=45, shuffle=True)
     # print(trainset.head(),testset.head())
 
+    # Create directories if they don't exist
+    train_dir = 'dataset/train'
+    test_dir = 'dataset/test'
+    if not os.path.exists(train_dir):
+        os.makedirs(train_dir, exist_ok=True)
+        print(f"Created directory: {train_dir}")
+    if not os.path.exists(test_dir):
+        os.makedirs(test_dir, exist_ok=True)
+        print(f"Created directory: {test_dir}")
+
     trainset.to_csv('dataset/train/trainset.csv')
     testset.to_csv('dataset/test/testset.csv')
 

@@ -327,6 +327,12 @@ def chickenFeatureExt():
     df = pd.DataFrame(dataDirt)
     print(df.info)
 
+    # Create directory if it doesn't exist
+    save_dir = os.path.dirname(saveCSVname)
+    if save_dir and not os.path.exists(save_dir):
+        os.makedirs(save_dir, exist_ok=True)
+        print(f"Created directory: {save_dir}")
+
     df.to_csv(saveCSVname,index=False)
 
 # chickenFeatureExt()
