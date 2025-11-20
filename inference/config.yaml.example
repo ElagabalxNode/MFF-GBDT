@@ -1,0 +1,31 @@
+# Example configuration file for MVP inference pipeline
+
+# Segmentation stage
+segmentation:
+  model_path: "data/models/segmentation/weight/205-model-73-100.pth"
+  confidence_threshold: 0.90  # Minimum confidence for detections
+
+# Features stage
+features:
+  resnet_weights_path: null  # Path to trained ResNet weights (null = use ImageNet pretrained)
+  # resnet_weights_path: "data/outputs/exps/myresnet/2025-11-20 08-08/fianlEpochWeights.pth"
+
+# GBDT stage
+gbdt:
+  model_path: "data/outputs/exps/lgbm_data_20210206-1198/2025-11-20_15-22/result.pkl"
+  model_type: "lightgbm"  # or "xgboost"
+
+# Database settings
+database:
+  enabled: true
+  path: "data/inference_results.db"
+
+# Device settings
+device: null  # null = auto-detect, or specify: "cuda", "cpu", "mps"
+
+# Output settings
+output:
+  save_images: true
+  save_masks: true
+  save_annotations: true
+
