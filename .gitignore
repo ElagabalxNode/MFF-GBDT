@@ -65,4 +65,5 @@ Thumbs.db
 # Cursor
 .cursor/
 
-.csv
+*.csv
+*.md
