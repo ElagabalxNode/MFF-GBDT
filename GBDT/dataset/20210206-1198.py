@@ -4,6 +4,7 @@ import cv2
 import os
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split
+from datetime import datetime
 
 # def getWeightFromExcel():
 #     """
@@ -38,7 +39,9 @@ def chickenFeatureExt():
 
     imgDir = ['1-21']
     # imgDir = ['56-110']
-    saveCSVname = 'GBDT/csvData/20210206-200-1198/20210206-1198_2D_3D_features.csv'
+
+    date_str = datetime.now().strftime('%Y%m%d')
+    saveCSVname = f'GBDT/csvData/{date_str}-mixData/{date_str}-mixData_2D_3D_features.csv'
 
     imgNameList = []
 
@@ -83,7 +86,7 @@ def chickenFeatureExt():
                 'meanHeight': meanHeightList,'mean2min': mean2minList, 'mean2max': mean2maxList,'stdHeight': stdHeightList,
                 'heightSum': heightSumList,
                 }
-    df = pd.read_excel("data/20210206-200/20210206体重登记表.xlsx")
+    df = pd.read_excel("coco_sets/mixData/20210206-200-weight.xlsx")
     idx_weightDict = {}
     for i in range(len(df)):
         idx = df.loc[i,'序号']  # serial number

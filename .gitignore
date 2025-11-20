@@ -1,6 +1,7 @@
 # User-specified directories and files
 coco_sets/
 test_xml/
+exps/
 content.pdf
 
 # Python

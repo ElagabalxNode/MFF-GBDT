@@ -81,6 +81,12 @@ def PredictImg(image, model, device):
 
 
 def main(dataPath, saveModelName, trainValRate):
+    # Создаем директорию для сохранения модели, если она не существует
+    save_dir = os.path.dirname(saveModelName)
+    if save_dir and not os.path.exists(save_dir):
+        os.makedirs(save_dir, exist_ok=True)
+        print(f"Created directory: {save_dir}")
+    
     # Support for Apple Silicon (MPS), CUDA, and CPU
     if torch.backends.mps.is_available():
         device = torch.device('mps')

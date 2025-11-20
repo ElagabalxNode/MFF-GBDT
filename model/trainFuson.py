@@ -1,7 +1,14 @@
 ## 用resnet 等训练分类
+import sys
+import os
+
+# Add project root to Python path for imports
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
 import torch
 import numpy as np
-import os
 import copy
 import time
 import matplotlib.pyplot as plt

@@ -1,9 +1,15 @@
 ## 用resnet 等训练分类
-import collections
+import sys
+import os
 
+# Add project root to Python path for imports
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+import collections
 import torch
 import numpy as np
-import os
 import time
 from torch.utils.data import DataLoader
 from torch import nn
@@ -118,10 +124,10 @@ def test_model(model, dataloaders, expPath, device):
             # print(weight_gt,weight_pr)
 
         print(phase)
-        print('平均绝对误差:',"{:.6f}".format(mean_absolute_error(weight_gt,weight_pr)))
-        print('均方误差mse:', "{:.6f}".format(mean_squared_error(weight_gt,weight_pr)))
-        print('均方根误差rmse:', "{:.6f}".format(mean_squared_error(weight_gt,weight_pr) ** 0.5))
-        print('R2:',"{:.6f}".format(r2_score(weight_gt,weight_pr)))
+        print('Mean Absolute Error (MAE):', "{:.6f}".format(mean_absolute_error(weight_gt, weight_pr)))
+        print('Mean Squared Error (MSE):', "{:.6f}".format(mean_squared_error(weight_gt, weight_pr)))
+        print('Root Mean Squared Error (RMSE):', "{:.6f}".format(mean_squared_error(weight_gt, weight_pr) ** 0.5))
+        print('R2 Score:', "{:.6f}".format(r2_score(weight_gt, weight_pr)))
 
     return
 

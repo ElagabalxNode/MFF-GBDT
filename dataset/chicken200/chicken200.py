@@ -8,15 +8,15 @@ import pandas as pd
 import cv2
 
 def data_split():
-    dataPath = 'exps/data_20210206-200_weight_100-model-73-50.pth-result/maskImg'
-    xlsxPath = 'data/20210206-200/20210206体重登记表.xlsx'
+    dataPath = 'exps/data_mixData_weight_205-model-73-100.pth-result/maskImg' # TODO: change the data path
+    xlsxPath = 'exps/data_mixData_weight_205-model-73-100.pth-result/20210206-200-weight.xlsx' # TODO: change the xlsx path
     df = pd.read_excel(xlsxPath)
     # print(df.loc[0]['体重/kg'])
 
     weightList = []
     nameList = []
     for i in sorted(os.listdir(dataPath)):
-        idx = int(i.split('.')[0]) - 1
+        idx = int(i.split('.')[0]) - 1 # TODO: Исправить парсинг имени файла, чтобы извлекать число из начала имени.
         weight = df.loc[idx]['体重/kg']
         # imgPath = os.path.join(dataPath,i)
         imgPath = dataPath + '/' + i
@@ -31,8 +31,8 @@ def data_split():
     trainset,testset = train_test_split(dataset,test_size=0.2,random_state=45, shuffle=True)
     # print(trainset.head(),testset.head())
 
-    trainset.to_csv('data/20210206-200/dataset/train/trainset.csv')
-    testset.to_csv('data/20210206-200/dataset/test/testset.csv')
+    trainset.to_csv('dataset/train/trainset.csv')
+    testset.to_csv('dataset/test/testset.csv')
 
     return trainset,testset
 
