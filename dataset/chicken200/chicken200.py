@@ -16,7 +16,9 @@ def data_split():
     weightList = []
     nameList = []
     for i in sorted(os.listdir(dataPath)):
-        idx = int(i.split('.')[0]) - 1 # TODO: Исправить парсинг имени файла, чтобы извлекать число из начала имени.
+        # Extract leading digits before the first dot or underscore
+        name_part = i.split('.')[0].split('_')[0]
+        idx = int(name_part) - 1
         weight = df.loc[idx]['体重/kg']
         # imgPath = os.path.join(dataPath,i)
         imgPath = dataPath + '/' + i
@@ -41,8 +43,8 @@ def data_split():
         os.makedirs(test_dir, exist_ok=True)
         print(f"Created directory: {test_dir}")
 
-    trainset.to_csv('dataset/train/trainset.csv')
-    testset.to_csv('dataset/test/testset.csv')
+    trainset.to_csv('dataset/train/trainset.csv', index=False)
+    testset.to_csv('dataset/test/testset.csv', index=False)
 
     return trainset,testset
 

@@ -23,7 +23,7 @@ from sklearn.metrics import mean_squared_error,mean_absolute_error,r2_score
 def makeEnv():
 
     expName = 'myresnet'
-    model_name = 'myresnet'
+    model_name = 'myresnet'  # Используем кастомную модель myresnet
     nowTime = time.strftime("%Y-%m-%d %H-%M", time.localtime())
     expPath = os.path.join('exps',expName,nowTime)
     if not os.path.exists(expPath):
@@ -204,7 +204,9 @@ if __name__ == '__main__':
                         num_classes, feature_extract, use_pretrained=False)
     print(model_ft)
     print(type(model_ft))
-    model_scratch = model_ft.to(device),
+    if model_ft is None:
+        raise ValueError(f"Model '{model_name}' is not implemented. Use 'Resnet' or 'myresnet'.")
+    model_scratch = model_ft.to(device)
     optimizer = torch.optim.SGD(filter(lambda p: p.requires_grad,
                                        model_ft.parameters()), lr=lr, momentum=0.9)
     loss_fn = nn.L1Loss()

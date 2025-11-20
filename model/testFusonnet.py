@@ -1,4 +1,4 @@
-## 用resnet 等训练分类
+# Test script for FusionNet evaluation (regression task)
 import sys
 import os
 

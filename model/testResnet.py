@@ -1,6 +1,8 @@
 ## 用resnet 等训练分类
 import sys
 import os
+import argparse
+import glob
 
 # Add project root to Python path for imports
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -18,6 +20,47 @@ import torchvision.models as models
 from sklearn.metrics import mean_squared_error,mean_absolute_error,r2_score
 from dataset.chicken200.chicken200 import Chicken_200_trainset, Chicken_200_testset
 
+# Constants for paths to weights
+DEFAULT_RESNET_WEIGHTS_DIR = "exps/myresnet"  # Base directory with ResNet weights
+
+
+def find_latest_resnet_weights(base_dir=DEFAULT_RESNET_WEIGHTS_DIR, prefer_final=True):
+    """
+    Finds the latest ResNet weights file.
+
+    Args:
+        base_dir: Base directory containing weights (default: exps/myresnet)
+        prefer_final: If True, prefers fianlEpochWeights.pth, else picks the latest epoch-*-Weights.pth
+
+    Returns:
+        str: Path to the weights file, or None if not found
+    """
+    if not os.path.exists(base_dir):
+        return None
+    
+    # Find all subdirectories with dates
+    subdirs = [d for d in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, d))]
+    if not subdirs:
+        return None
+    
+    # Sort by date (last first)
+    subdirs.sort(reverse=True)
+    latest_dir = os.path.join(base_dir, subdirs[0])
+    
+    # If prefer final weights
+    if prefer_final:
+        final_weights = os.path.join(latest_dir, 'fianlEpochWeights.pth')
+        if os.path.exists(final_weights):
+            return final_weights
+    
+    # Otherwise, find the latest epoch-*-Weights.pth
+    weight_files = glob.glob(os.path.join(latest_dir, 'epoch-*-Weights.pth'))
+    if not weight_files:
+        return None
+    
+    # Sort by modification time (last first)
+    weight_files.sort(key=lambda x: os.path.getmtime(x), reverse=True)
+    return weight_files[0]
 
 def makeEnv():
 
@@ -78,11 +121,9 @@ class myresnet_base(nn.Module):
         # self.model_ft=models.resnet18(pretrained=False)
         self.model_ft=models.resnet50(pretrained=False)
         num_ftrs = self.model_ft.fc.in_features
-        self.model_ft.fc = nn.Linear(num_ftrs, 1048)
-        # self.model_ft.fc = nn.Linear(num_ftrs, 1024)
+        self.model_ft.fc = nn.Linear(num_ftrs, 1024)  # Must match trainResnet.py structure
         self.relu=nn.ReLU()
-        self.fc2 = nn.Linear(1048,512)
-        # self.fc2 = nn.Linear(1024,512)
+        self.fc2 = nn.Linear(1024,512)  # Must match trainResnet.py structure
         self.relu2=nn.ReLU()
         self.fc3 = nn.Linear(512,1)
 
@@ -131,10 +172,29 @@ def test_model(model, dataloaders, expPath, device):
 
     return
 
-def before_test_resnet():
-    expPath, model_name, num_epochs, num_classes, batch_size, lr, weightPath, feature_extract = makeEnv()
-    weightPath = "exps/myresnet/2021-12-11 01-48/fianlEpochWeights.pth"
-    # weightPath = "exps/myresnet/2021-12-14 22-19/epoch-50-0.14810015708208085-Weights.pth"
+def before_test_resnet(weight_path=None):
+    """
+    Tests the ResNet model.
+    
+    Args:
+        weight_path: Path to the weights file. If None, automatically finds the latest weights.
+    """
+    expPath, model_name, num_epochs, num_classes, batch_size, lr, _, feature_extract = makeEnv()
+    
+    # Define the path to the weights
+    if weight_path is None:
+        weight_path = find_latest_resnet_weights()
+        if weight_path is None:
+            raise FileNotFoundError(
+                    f"Weights not found in {DEFAULT_RESNET_WEIGHTS_DIR}. "
+                    f"Specify the path through --weights or ensure that the weights exist."
+            )
+    
+    # Check if the file exists
+    if not os.path.exists(weight_path):
+        raise FileNotFoundError(f"Weights file not found: {weight_path}")
+    
+    print(f"Loading weights from: {weight_path}")
 
     train_dataset = Chicken_200_trainset(transform=transforms.Compose([
         transforms.ToTensor(),
@@ -150,33 +210,58 @@ def before_test_resnet():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     resnet = myresnet_base()
-    resnet.load_state_dict(torch.load(weightPath, map_location='cpu'))
+    resnet.load_state_dict(torch.load(weight_path, map_location='cpu'))
     print(resnet)
 
     resnet = resnet.to(device)
     test_model(resnet, dataloaders_dict, expPath, device)
 
-def make_pth():
-    """Restore resnet weights file, add prefix "model_ft.""""
-    weightPath = "exps/myresnet/2021-12-11 01-48/epoch-95-0.15137851883967718-Weights.pth"
-
-    pth = torch.load(weightPath, map_location='cpu')
-    print(pth.keys(),type(pth))
+def make_pth(weight_path=None):
+    """
+    Converts ResNet weights for use in FusonNet (adds prefix "model_ft.").
+    
+    Args:
+        weight_path: Path to the weights file. If None, automatically finds the latest weights.
+    """
+    if weight_path is None:
+        weight_path = find_latest_resnet_weights(prefer_final=False)
+        if weight_path is None:
+            raise FileNotFoundError(
+                f"Weights not found in {DEFAULT_RESNET_WEIGHTS_DIR}. "
+                f"Specify the path through --weights or ensure that the weights exist."
+            )
+    
+    if not os.path.exists(weight_path):
+        raise FileNotFoundError(f"Weights file not found: {weight_path}")
+    
+    print(f"Processing weights from: {weight_path}")
+    
+    pth = torch.load(weight_path, map_location='cpu')
+    print(pth.keys(), type(pth))
     exceptkey = ['fc2.weight', 'fc2.bias', 'fc3.weight', 'fc3.bias']
 
     mydict = collections.OrderedDict()
     for k in pth.keys():
-        print(k,pth[k].size())
+        print(k, pth[k].size())
         if k not in exceptkey:
             mydict['model_ft.'+k] = pth[k]
         else:
             mydict[k] = pth[k]
 
-    print(mydict.keys(),type(pth))
-    # torch.save(mydict,weightPath)
+    print(mydict.keys(), type(pth))
+    # torch.save(mydict, weight_path)  # Uncomment to save
 
 if __name__ == '__main__':
-    before_test_resnet()
-    # make_pth()
+    parser = argparse.ArgumentParser(description='Test ResNet model for weight prediction')
+    parser.add_argument('--weights', type=str, default=None,
+                        help=f'Path to model weights file. If not specified, automatically finds latest weights from {DEFAULT_RESNET_WEIGHTS_DIR}')
+    parser.add_argument('--make-pth', action='store_true',
+                        help='Run make_pth() to convert weights for FusonNet instead of testing')
+    args = parser.parse_args()
+    
+    if args.make_pth:
+        make_pth(weight_path=args.weights)
+    else:
+        before_test_resnet(weight_path=args.weights)
 
 

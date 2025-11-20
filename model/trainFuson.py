@@ -1,4 +1,4 @@
-## 用resnet 等训练分类
+# Train using ResNet or similar models for classification/regression
 import sys
 import os
 
@@ -43,7 +43,7 @@ def makeEnv():
     fizze_resnet = True # Whether to freeze the resnet parameters
     weightPath = os.path.join(expPath, 'fianlEpochWeights.pth')
     logFilePath = os.path.join(expPath, 'log.txt' )
-    init_resnet_weightPath = "exps/myresnet/2021-12-14 22-19/epoch-50-0.14810015708208085-Weights.pth" # Resnet weights file
+    init_resnet_weightPath = "exps/myresnet/2025-11-20 08-08/epoch-43-0.23784844190269322-Weights.pth" # Resnet weights file
 
     log_str = "model_name " + model_name + '\n' + \
               "num_classes " + str(num_classes) + '\n' \
