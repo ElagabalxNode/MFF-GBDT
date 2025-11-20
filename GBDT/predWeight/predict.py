@@ -32,10 +32,10 @@ print(columns,len(columns))
 
 # load model with pickle to predict
 # model_weight = 'GBDT/exps/lgbm_data_20210206-1198/2021-12-16_21-11/result.pkl' # no normal
-# model_weight = 'GBDT/exps/lgbm_data_20210206-1198/2021-12-16_21-12/result.pkl' # with normal
+model_weight = 'GBDT/exps/lgbm_data_20210206-1198/2025-11-20_15-22/result.pkl' # with normal
 
 # model_weight = 'GBDT/exps/xgb_data_20210206-1198/2021-12-16_21-18/xgb.pkl' # no normal
-model_weight = 'GBDT/exps/xgb_data_20210206-1198/2022-09-16_15-36/xgb.pkl' # with normal
+# model_weight = 'GBDT/exps/xgb_data_20210206-1198/2022-09-16_15-36/xgb.pkl' # with normal
 
 
 

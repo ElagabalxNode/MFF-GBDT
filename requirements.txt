@@ -13,6 +13,8 @@ openpyxl>=3.1.0
 
 # Machine learning utilities
 scikit-learn>=1.3.0
+lightgbm>=4.0.0
+joblib>=1.3.0
 
 # Visualization
 matplotlib>=3.7.0

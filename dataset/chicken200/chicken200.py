@@ -16,9 +16,7 @@ def data_split():
     weightList = []
     nameList = []
     for i in sorted(os.listdir(dataPath)):
-        # Extract leading digits before the first dot or underscore
-        name_part = i.split('.')[0].split('_')[0]
-        idx = int(name_part) - 1
+        idx = int(i.split('.')[0]) - 1
         weight = df.loc[idx]['体重/kg']
         # imgPath = os.path.join(dataPath,i)
         imgPath = dataPath + '/' + i

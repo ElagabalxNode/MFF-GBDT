@@ -4,8 +4,9 @@ import numpy as np
 import pickle
 import joblib
 import lightgbm as lgb
+from lightgbm import early_stopping
 from sklearn.metrics import mean_squared_error
-from sklearn.metrics import mean_absolute_error,r2_score
+from sklearn.metrics import mean_absolute_error, r2_score
 from sklearn.model_selection import GridSearchCV
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
@@ -23,20 +24,6 @@ def logger(log_str):
         file.write(log_str)
 
 
-# #Manual features
-# train_data_path = 'GBDT/csvData/20210206-200-1198-manuals/20210206-1198-train-0.8.csv'
-# val_data_path = 'GBDT/csvData/20210206-200-1198-manuals/20210206-1198-test-0.2.csv'
-# test_data_path = 'GBDT/csvData/20210206-200-1198-manuals/20210206-1198-test-0.2.csv'
-
-## Normalized manual features
-# train_data_path = 'GBDT/csvData/20210206-200-1198-manuals/20210206-1198-normal-train-0.8.csv'
-# val_data_path = 'GBDT/csvData/20210206-200-1198-manuals/20210206-1198-normal-test-0.2.csv'
-# test_data_path = 'GBDT/csvData/20210206-200-1198-manuals/20210206-1198-normal-test-0.2.csv'
-
-# Manual features + automatic features
-# train_data_path = 'GBDT/csvData/20210206-200-1198-withauto/20210206-200-1198-withauto-train.csv'
-# val_data_path = 'GBDT/csvData/20210206-200-1198-withauto/20210206-200-1198-withauto-val.csv'
-# test_data_path = 'GBDT/csvData/20210206-200-1198-withauto/20210206-200-1198-withauto-val.csv'
 
 # Normalized manual features + automatic features
 train_data_path = 'GBDT/csvData/20210206-200-1198-withauto/20210206-200-1198-withauto-withnormal-train.csv'
@@ -128,7 +115,7 @@ old_manuals = ['area', 'perimeter', 'min_rect_width', 'min_rect_high', 'eccentri
 lgb_train = lgb.Dataset(x_train, y_train)
 lgb_eval = lgb.Dataset(x_test, y_test, reference=lgb_train)
 
-# 定义一个统计函数方便了解数据的分布
+# Define a utility function to analyze data distribution
 def show_stats(data):
     """data is the input data, then calculate the following statistics"""
     print("Minimum value: {}".format(np.min(data)))
@@ -144,7 +131,13 @@ def model_train(model):
     ## param_grid={'learning_rate':[0.01,0.05,0.1,0.2]}
     ##model=GridSearchCV(model,param_grid)
     # Start training the model
-    model.fit(x_train,y_train,eval_set=[(x_val, y_val)], eval_metric='l1', early_stopping_rounds=500)
+    # For LightGBM 4.0+, use callbacks for early stopping
+    model.fit(
+        x_train, y_train,
+        eval_set=[(x_val, y_val)],
+        eval_metric='l1',
+        callbacks=[early_stopping(stopping_rounds=500)]
+    )
     # model.fit(x_train,y_train)
 
     test_predict=model.predict(x_test)# Get the predicted value here, no need to return
@@ -176,10 +169,16 @@ def model_train(model):
     return model
 
 
-model_lgb=lgb.LGBMRegressor(n_estimators=4000,learning_rate=0.1,num_leaves=15,
-                    max_depth=5,min_child_samples=15,min_child_weight=0.01,
-                    subsample=0.8,colsample_bytree=1
-                            )
+model_lgb = lgb.LGBMRegressor(
+    n_estimators=4000,
+    learning_rate=0.1,
+    num_leaves=15,
+    max_depth=5,
+    min_child_samples=15,
+    min_child_weight=0.01,
+    subsample=0.8,
+    colsample_bytree=1
+)
 model_lgb=model_train(model_lgb)
 print(model_lgb.get_params())
 
