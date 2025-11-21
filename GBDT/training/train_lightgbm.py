@@ -13,7 +13,7 @@ from sklearn.model_selection import train_test_split
 import time
 import os
 
-expName = 'lgbm_data_20210206-1198'
+expName = 'lgbm_data_20251121-1198'
 nowTime = time.strftime("%Y-%m-%d_%H-%M", time.localtime())
 expPath = os.path.join('data/outputs/exps',expName,nowTime)
 if not os.path.exists(expPath):
@@ -26,9 +26,9 @@ def logger(log_str):
 
 
 # Normalized manual features + automatic features
-train_data_path = 'data/processed/csvData/20210206-200-1198-withauto/20210206-200-1198-withauto-withnormal-train.csv'
-val_data_path = 'data/processed/csvData/20210206-200-1198-withauto/20210206-200-1198-withauto-withnormal-val.csv'
-test_data_path = 'data/processed/csvData/20210206-200-1198-withauto/20210206-200-1198-withauto-withnormal-val.csv'
+train_data_path = 'data/processed/csvData/20251121-withauto/20251121-withauto-withnormal-train.csv'
+val_data_path = 'data/processed/csvData/20251121-withauto/20251121-withauto-withnormal-val.csv'
+test_data_path = 'data/processed/csvData/20251121-withauto/20251121-withauto-withnormal-val.csv'
 
 df_train = pd.read_csv(train_data_path)
 df_val = pd.read_csv(val_data_path)

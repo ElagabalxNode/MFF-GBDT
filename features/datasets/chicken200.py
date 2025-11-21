@@ -8,8 +8,9 @@ import pandas as pd
 import cv2
 
 def data_split():
-    dataPath = 'data/outputs/exps/data_mixData_weight_205-model-73-100.pth-result/maskImg' # TODO: change the data path
-    xlsxPath = 'data/outputs/exps/data_mixData_weight_205-model-73-100.pth-result/20210206-200-weight.xlsx' # TODO: change the xlsx path
+    dataPath = 'data/outputs/exps/data_raw_weight_model-1121-100.pth-result/maskImg' # TODO: change the data path
+    xlsxPath = 'data/raw/coco_sets/mixData/20210206-200-weight.xlsx' # TODO: change the xlsx path
+    
     df = pd.read_excel(xlsxPath)
     # print(df.loc[0]['体重/kg'])
 

@@ -217,7 +217,7 @@ if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     num_classes = 2
 
-    weightPath = "data/models/segmentation/weight/205-model-73-100.pth"
+    weightPath = "data/models/segmentation/weight/model-1121-100.pth"
     # weightPath = "data/models/segmentation/weight/82copymodel-10.pth"
 
     model = get_model_instance_segmentation(num_classes)
@@ -229,7 +229,7 @@ if __name__ == '__main__':
 
     # PredictImg( model, device)
 
-    dir = 'data/raw/coco_sets/mixData/origin'
+    dir = 'data/raw/origin'
 
     weightName = weightPath.split("/")[-1]
     dataName = dir.split('/')[-2]

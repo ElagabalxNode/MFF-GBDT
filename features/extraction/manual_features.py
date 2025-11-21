@@ -86,7 +86,7 @@ def chickenFeatureExt():
                 'meanHeight': meanHeightList,'mean2min': mean2minList, 'mean2max': mean2maxList,'stdHeight': stdHeightList,
                 'heightSum': heightSumList,
                 }
-    df = pd.read_excel("coco_sets/mixData/20210206-200-weight.xlsx")
+    df = pd.read_excel("data\raw\coco_sets\mixData\20210206-200-weight.xlsx")
     idx_weightDict = {}
     for i in range(len(df)):
         idx = df.loc[i,'序号']  # serial number

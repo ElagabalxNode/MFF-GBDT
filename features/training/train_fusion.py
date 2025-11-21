@@ -11,6 +11,7 @@ import torch
 import numpy as np
 import copy
 import time
+import re
 import matplotlib.pyplot as plt
 import pandas as pd
 from PIL import Image
@@ -43,7 +44,7 @@ def makeEnv():
     fizze_resnet = True # Whether to freeze the resnet parameters
     weightPath = os.path.join(expPath, 'fianlEpochWeights.pth')
     logFilePath = os.path.join(expPath, 'log.txt' )
-    init_resnet_weightPath = "data/outputs/exps/myresnet/2025-11-20 08-08/epoch-43-0.23784844190269322-Weights.pth" # Resnet weights file
+    init_resnet_weightPath = "data/outputs/exps/myresnet/2025-11-21 12-57/fianlEpochWeights.pth" # Resnet weights file
 
     log_str = "model_name " + model_name + '\n' + \
               "num_classes " + str(num_classes) + '\n' \
@@ -176,9 +177,19 @@ def train_model(model, dataloaders, loss_fn, optimizer,scheduler, expPath, devic
                 manual_features = []
                 # print(path)
                 for p in range(len(path)):
-                    name = path[p].split('/')[-1]
-                    # print(name)
-                    features = df.loc[name].values
+                    x_path = path[p]
+                    base = os.path.basename(x_path)  # '186.2_Depth-0-0.png'
+                    # убрать суффикс "-число" перед .png:
+                    key = re.sub(r'-\d+\.png$', '.png', base)  # '186.2_Depth-0.png'
+                    
+                    # Поиск в CSV по нормализованному имени
+                    if key in df.index:
+                        features = df.loc[key].values
+                    else:
+                        # Fallback: если не найдено, используем нулевые признаки
+                        print(f"Warning: {key} not found in CSV, using zero features")
+                        features = np.zeros(25)
+                    
                     manual_features.append(features)
                 manual_features = torch.as_tensor(manual_features, dtype=torch.float32)
                 # print(manual_features)

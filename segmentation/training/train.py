@@ -25,7 +25,9 @@ def gotoMain():
     # dataPath = 'data/100label'
     # dataPath = 'data/105'
     dataPath = 'data/raw/coco_sets/mixData'
-    saveModelName = 'data/models/segmentation/weight/205-model-73-'
+    from datetime import datetime
+    today = datetime.now().strftime("%m%d")
+    saveModelName = f"data/models/segmentation/weight/model-{today}-"
     trainValRate = 0.2
 
     main(dataPath, saveModelName, trainValRate)
@@ -88,7 +90,7 @@ def PredictImg(image, model, device):
 
 
 def main(dataPath, saveModelName, trainValRate):
-    # Создаем директорию для сохранения модели, если она не существует
+    # Create directory for saving the model if it does not exist
     save_dir = os.path.dirname(saveModelName)
     if save_dir and not os.path.exists(save_dir):
         os.makedirs(save_dir, exist_ok=True)
