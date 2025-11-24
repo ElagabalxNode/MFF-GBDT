@@ -374,43 +374,27 @@ def chicken1198_split():
     pd.DataFrame(x_test).to_csv("GBDT/csvData/20210206-200-1198-manuals/20210206-1198-test-0.2.csv",index=False, header=head)
 
 def normalFeature():
-    """Normalize hand-crafted features"""
-    data = pd.read_csv('GBDT/csvData/20210206-200-1198-manuals/20210206-1198_2D_3D_features.csv')
-    imgName = data['imgName']
-    data = data.drop(['weight','imgName'],axis=1)
-
-    scaler = MinMaxScaler()
-    scaler.fit(data)
-    data = scaler.transform(data)
-    print(type(data))
-
-    df = pd.DataFrame(data)
-    df = pd.concat([imgName,df],axis=1)
-    print(df.head())
-
-    df.to_csv('GBDT/csvData/20210206-200-1198-manuals/20210206-1198_2D_3D_normal_features.csv',index=False)
+    """
+    [DEPRECATED] This function causes Data Leakage!
+    It normalizes the entire dataset BEFORE splitting.
+    Use features/preprocessing/pipeline_fixed.py instead.
+    """
+    print("WARNING: using deprecated function normalFeature which causes data leakage!")
+    # Original code commented out to prevent usage
+    return
+    # data = pd.read_csv('GBDT/csvData/20210206-200-1198-manuals/20210206-1198_2D_3D_features.csv')
+    # ...
 # chicken1198_split()
 # normalFeature()
 
 def chicken1198_normal_split():
-    data = pd.read_csv('GBDT/csvData/20210206-200-1198-manuals/20210206-1198_2D_3D_features.csv')
-    df = pd.read_csv('GBDT/csvData/20210206-200-1198-manuals/20210206-1198_2D_3D_normal_features.csv')
-    df.insert(0,'weight',data['weight'])
-
-    head = data.columns.values
-    print(type(head))
-    print(head)
-    # print(data.head().to_numpy())
-    # dataNumpy = data.to_numpy()
-
-    print(np.mean(data['weight'])) #1.5932470784641068
-    print(np.std(data['weight'])) #0.27380102700920916
-
-    #  39, 42,43,#45xgb#,
-    x_train,x_test = train_test_split(df.to_numpy() , test_size=0.2, random_state=45, shuffle=True)
-    print(len(x_train),len(x_test))
-    pd.DataFrame(x_train).to_csv("GBDT/csvData/20210206-200-1198-manuals/20210206-1198-normal-train-0.8.csv", index=False, header=head)
-    # pd.DataFrame(x_val).to_csv("GBDT/csvData/csvData/20210206-200-1198/Bean-val-20.csv",index=False, header=head)
-    pd.DataFrame(x_test).to_csv("GBDT/csvData/20210206-200-1198-manuals/20210206-1198-normal-test-0.2.csv",index=False, header=head)
+    """
+    [DEPRECATED] This function uses the leaked data from normalFeature.
+    Use features/preprocessing/pipeline_fixed.py instead.
+    """
+    print("WARNING: using deprecated function chicken1198_normal_split!")
+    return
+    # data = pd.read_csv('GBDT/csvData/20210206-200-1198-manuals/20210206-1198_2D_3D_features.csv')
+    # ...
 
 chicken1198_normal_split()

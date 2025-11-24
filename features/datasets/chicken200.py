@@ -27,9 +27,7 @@ def data_split():
 
     dataset = pd.DataFrame({'path':nameList, 'weight':weightList})
 
-    # trainset,testset = train_test_split(dataset,test_size=0.2,random_state=43, shuffle=True)
-    # trainset,testset = train_test_split(dataset,test_size=0.3,random_state=43, shuffle=True)
-    trainset,testset = train_test_split(dataset,test_size=0.2,random_state=45, shuffle=True)
+    trainset,testset = train_test_split(dataset,test_size=0.2,random_state=42, shuffle=True)
     # print(trainset.head(),testset.head())
 
     # Create directories if they don't exist
