@@ -1,6 +1,6 @@
 """
 Segmentation module for MVP inference
-Loads Mask R-CNN and performs instance segmentation on depth images
+Loads YOLOv8-seg and performs instance segmentation on depth images
 """
 
 import sys
@@ -15,41 +15,43 @@ import torch
 import cv2
 import numpy as np
 from PIL import Image
-from torchvision.transforms import transforms
-from segmentation.models.Mask_rcnn_Model import get_model_instance_segmentation
+from ultralytics import YOLO
 
 
 class SegmentationInference:
-    """Mask R-CNN inference for broiler segmentation"""
+    """YOLOv8-seg inference for broiler segmentation"""
     
     def __init__(self, model_path: str, device: str = None, confidence_threshold: float = 0.90):
         """
         Initialize segmentation model
         
         Args:
-            model_path: Path to trained Mask R-CNN weights (.pth file)
+            model_path: Path to trained YOLOv8 weights (.pt file)
             device: 'cuda', 'cpu', or None (auto-detect)
             confidence_threshold: Minimum confidence score for detections
         """
         self.confidence_threshold = confidence_threshold
         
-        # Device setup
+        # Device setup for YOLO (YOLO uses string format)
         if device is None:
             if torch.cuda.is_available():
-                self.device = torch.device('cuda')
+                self.device = "0"  # YOLO uses "0" for cuda:0
             elif torch.backends.mps.is_available():
-                self.device = torch.device('mps')
+                self.device = "mps"
             else:
-                self.device = torch.device('cpu')
+                self.device = "cpu"
         else:
-            self.device = torch.device(device)
+            # Convert torch device to YOLO format
+            if device == 'cuda':
+                self.device = "0"
+            else:
+                self.device = device
         
-        # Load model
-        num_classes = 2  # Background + chicken
-        self.model = get_model_instance_segmentation(num_classes)
-        self.model.to(self.device)
-        self.model.eval()
-        self.model.load_state_dict(torch.load(model_path, map_location=self.device))
+        # Load YOLOv8 model
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"Model weights not found at {model_path}")
+        
+        self.model = YOLO(model_path)
         
         print(f"Segmentation model loaded from {model_path}")
         print(f"Using device: {self.device}")
@@ -69,29 +71,48 @@ class SegmentationInference:
                 - 'score': confidence score
                 - 'instance_id': unique instance identifier
         """
-        # Load and preprocess image
-        img = Image.open(image_path).convert("RGB")
-        img_tensor = transforms.Compose([transforms.ToTensor()])(img)
-        
-        # Run inference
-        with torch.no_grad():
-            prediction = self.model([img_tensor.to(self.device)])
-        
-        boxes = prediction[0]['boxes'].cpu()
-        labels = prediction[0]['labels'].cpu()
-        scores = prediction[0]['scores'].cpu()
-        masks = prediction[0]['masks'].cpu()
-        
         # Read original image for maskImg
         original_img = cv2.imread(image_path)
         if original_img is None:
             raise ValueError(f"Could not read image: {image_path}")
         
+        img_height, img_width = original_img.shape[:2]
+        
+        # Run YOLOv8 inference
+        results = self.model.predict(
+            image_path,
+            device=self.device,
+            conf=self.confidence_threshold,
+            verbose=False
+        )
+        
+        # Extract results from first (and only) image
+        result_obj = results[0]
+        
+        # Get boxes, masks, scores
+        boxes = result_obj.boxes.xyxy.cpu().numpy()  # [x1, y1, x2, y2]
+        scores = result_obj.boxes.conf.cpu().numpy()
+        masks = result_obj.masks  # YOLO masks object
+        
         instances = []
-        for idx in range(boxes.shape[0]):
+        for idx in range(len(boxes)):
             if scores[idx] >= self.confidence_threshold:
-                # Extract mask
-                mask = masks[idx, 0].mul(255).byte().numpy()
+                # Get mask for this instance
+                if masks is not None and masks.data is not None:
+                    # YOLO masks are in shape [N, H, W] where N is number of instances
+                    mask_tensor = masks.data[idx].cpu().numpy()  # Shape: [H, W]
+                    
+                    # Resize mask to original image size if needed
+                    if mask_tensor.shape != (img_height, img_width):
+                        mask_tensor = cv2.resize(mask_tensor, (img_width, img_height), interpolation=cv2.INTER_NEAREST)
+                    
+                    # Convert to uint8 binary mask (0 or 255)
+                    mask = (mask_tensor * 255).astype(np.uint8)
+                else:
+                    # Fallback: create mask from bounding box
+                    x1, y1, x2, y2 = boxes[idx]
+                    mask = np.zeros((img_height, img_width), dtype=np.uint8)
+                    mask[int(y1):int(y2), int(x1):int(x2)] = 255
                 
                 # Threshold mask
                 _, mask_thresh = cv2.threshold(np.uint8(mask), 100, 255, 0)
@@ -101,18 +122,14 @@ class SegmentationInference:
                 maskImg = cv2.bitwise_and(original_img, mask_3d)
                 
                 # Extract bounding box
-                box = [
-                    int(boxes[idx][0].item()),
-                    int(boxes[idx][1].item()),
-                    int(boxes[idx][2].item()),
-                    int(boxes[idx][3].item())
-                ]
+                x1, y1, x2, y2 = boxes[idx]
+                box = [int(x1), int(y1), int(x2), int(y2)]
                 
                 instances.append({
                     'mask': mask_thresh,  # Binary mask
-                    'maskImg': maskImg,  # Masked image (RGB)
+                    'maskImg': maskImg,  # Masked image (BGR, same as original)
                     'box': box,
-                    'score': float(scores[idx].item()),
+                    'score': float(scores[idx]),
                     'instance_id': idx
                 })
         
@@ -133,4 +150,3 @@ class SegmentationInference:
             instances = self.segment_image(img_path)
             results[img_path] = instances
         return results
-

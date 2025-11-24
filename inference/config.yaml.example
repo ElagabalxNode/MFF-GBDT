@@ -1,8 +1,8 @@
 # Example configuration file for MVP inference pipeline
 
-# Segmentation stage
+# Segmentation stage (YOLOv8-Nano)
 segmentation:
-  model_path: "data/models/segmentation/weight/205-model-73-100.pth"
+  model_path: "data/models/segmentation/yolo/best_n.pt"  # YOLOv8-Nano trained model
   confidence_threshold: 0.90  # Minimum confidence for detections
 
 # Features stage
