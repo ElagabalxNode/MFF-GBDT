@@ -55,6 +55,39 @@ class MLflowCallback:
     def on_fit_epoch_end(self, trainer):
         pass
 
+def resolve_model_path(model_name_or_path):
+    """
+    Resolve model path: check if it's a local file, otherwise return as-is for YOLO to handle.
+    If model doesn't exist locally and looks like a standard model name, check common locations.
+    """
+    # If it's already an absolute path to existing file, use it
+    if os.path.isabs(model_name_or_path) and os.path.exists(model_name_or_path):
+        return os.path.abspath(model_name_or_path)
+    
+    # Check common locations for model files (project root first, as models are usually there)
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../'))
+    possible_paths = [
+        os.path.join(project_root, model_name_or_path),  # Project root (most common)
+        model_name_or_path,  # Current working directory
+        os.path.join(project_root, "data", "models", "segmentation", model_name_or_path),  # Models dir
+    ]
+    
+    for path in possible_paths:
+        if os.path.exists(path):
+            resolved = os.path.abspath(path)
+            print(f"Found model at: {resolved}")
+            return resolved
+    
+    # If not found locally, return original name (YOLO will try to download)
+    # But warn user about potential download issues
+    print(f"[WARNING] Model '{model_name_or_path}' not found locally.")
+    print(f"   Ultralytics will attempt to download it. If download fails due to network issues,")
+    print(f"   please download manually using:")
+    print(f"   python utils/download_yolo_model.py {model_name_or_path}")
+    print(f"   Or download from: https://github.com/ultralytics/assets/releases")
+    print(f"   and place it in the project root directory.")
+    return model_name_or_path
+
 def main():
     args = parse_args()
     setup_mlflow_experiment(args.experiment_name)
@@ -77,8 +110,12 @@ def main():
         log_params_from_args(args, exclude=['device'])
         mlflow.log_param("device", device)
         
+        # Resolve model path (check local files first)
+        model_path = resolve_model_path(args.model)
+        print(f"Loading model from: {model_path}")
+        
         # Initialize YOLO model
-        model = YOLO(args.model)
+        model = YOLO(model_path)
         
         # Disable Ultralytics MLflow integration to prevent conflict
         from ultralytics import settings

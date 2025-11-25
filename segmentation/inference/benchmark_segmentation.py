@@ -21,10 +21,12 @@ from segmentation.models.Mask_rcnn_Model import get_model_instance_segmentation
 from utils import transforms as T
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Benchmark Segmentation Models: Mask R-CNN vs YOLOv8")
+    parser = argparse.ArgumentParser(description="Benchmark Segmentation Models: Mask R-CNN vs YOLOv8 vs YOLO11")
     parser.add_argument("--maskrcnn_weights", type=str, default="data/models/segmentation/weight/best_model.pth", help="Path to Mask R-CNN weights")
     parser.add_argument("--yolo_nano_weights", type=str, default="data/models/segmentation/yolo/best_n.pt", help="Path to YOLOv8 Nano weights")
     parser.add_argument("--yolo_small_weights", type=str, default="data/models/segmentation/yolo/best_s.pt", help="Path to YOLOv8 Small weights")
+    parser.add_argument("--yolo11_nano_weights", type=str, default="data/models/segmentation/yolo/best_yolo11n.pt", help="Path to YOLO11 Nano weights")
+    parser.add_argument("--yolo11_small_weights", type=str, default="data/models/segmentation/yolo/best_yolo11s.pt", help="Path to YOLO11 Small weights")
     parser.add_argument("--test_dir", type=str, default="data/raw/coco_sets/mixData/origin", help="Directory with test images")
     parser.add_argument("--output_dir", type=str, default="data/outputs/exps/ablation_segmentation", help="Output directory for results")
     parser.add_argument("--device", type=str, default="", help="Device (cpu, cuda, mps)")
@@ -55,12 +57,12 @@ def load_maskrcnn(weights_path, device):
     model.eval()
     return model
 
-def load_yolo(weights_path, device, fallback_model="yolov8n-seg.pt"):
+def load_yolo(weights_path, device, fallback_model="yolov8n-seg.pt", model_name="YOLO"):
     if os.path.exists(weights_path):
         model = YOLO(weights_path)
-        print(f"Loaded YOLOv8 from {weights_path}")
+        print(f"Loaded {model_name} from {weights_path}")
     else:
-        print(f"Warning: YOLO weights not found at {weights_path}. Using pretrained {fallback_model}.")
+        print(f"Warning: {model_name} weights not found at {weights_path}. Using pretrained {fallback_model}.")
         model = YOLO(fallback_model)
     return model
 
@@ -142,7 +144,7 @@ def main():
         torch.cuda.empty_cache()
     
     # 2. Benchmark YOLOv8 Nano
-    yolo_n = load_yolo(args.yolo_nano_weights, device, fallback_model="yolov8n-seg.pt")
+    yolo_n = load_yolo(args.yolo_nano_weights, device, fallback_model="yolov8n-seg.pt", model_name="YOLOv8")
     yolo_n_time, yolo_n_fps = benchmark_model(yolo_n, "YOLOv8-Nano", image_paths, device)
     results["Model"].append("YOLOv8-Nano")
     results["Avg Latency (s)"].append(yolo_n_time)
@@ -152,11 +154,31 @@ def main():
     del yolo_n
     
     # 3. Benchmark YOLOv8 Small
-    yolo_s = load_yolo(args.yolo_small_weights, device, fallback_model="yolov8s-seg.pt")
+    yolo_s = load_yolo(args.yolo_small_weights, device, fallback_model="yolov8s-seg.pt", model_name="YOLOv8")
     yolo_s_time, yolo_s_fps = benchmark_model(yolo_s, "YOLOv8-Small", image_paths, device)
     results["Model"].append("YOLOv8-Small")
     results["Avg Latency (s)"].append(yolo_s_time)
     results["FPS"].append(yolo_s_fps)
+    results["Device"].append(str(device))
+    
+    del yolo_s
+    
+    # 4. Benchmark YOLO11 Nano
+    yolo11_n = load_yolo(args.yolo11_nano_weights, device, fallback_model="yolo11n-seg.pt", model_name="YOLO11")
+    yolo11_n_time, yolo11_n_fps = benchmark_model(yolo11_n, "YOLO11-Nano", image_paths, device)
+    results["Model"].append("YOLO11-Nano")
+    results["Avg Latency (s)"].append(yolo11_n_time)
+    results["FPS"].append(yolo11_n_fps)
+    results["Device"].append(str(device))
+    
+    del yolo11_n
+    
+    # 5. Benchmark YOLO11 Small
+    yolo11_s = load_yolo(args.yolo11_small_weights, device, fallback_model="yolo11s-seg.pt", model_name="YOLO11")
+    yolo11_s_time, yolo11_s_fps = benchmark_model(yolo11_s, "YOLO11-Small", image_paths, device)
+    results["Model"].append("YOLO11-Small")
+    results["Avg Latency (s)"].append(yolo11_s_time)
+    results["FPS"].append(yolo11_s_fps)
     results["Device"].append(str(device))
 
     # Save Results
@@ -169,9 +191,9 @@ def main():
     print(f"Results saved to {csv_path}")
     
     # Plot
-    plt.figure(figsize=(10, 6))
-    colors = ['blue', 'green', 'orange']
-    bars = plt.bar(df["Model"], df["FPS"], color=colors)
+    plt.figure(figsize=(14, 6))
+    colors = ['blue', 'green', 'orange', 'red', 'purple']
+    bars = plt.bar(df["Model"], df["FPS"], color=colors[:len(df)])
     plt.ylabel("FPS (Higher is better)")
     plt.title(f"Inference Speed Comparison ({device})")
     
