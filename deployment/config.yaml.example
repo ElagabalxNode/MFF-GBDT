@@ -1,0 +1,31 @@
+# Example configuration file for MVP inference pipeline
+
+# Segmentation stage (YOLOv8-Nano)
+segmentation:
+  model_path: "models/segmentation/yolo/best_n.pt"  # YOLOv8-Nano trained model (relative to deployment/)
+  confidence_threshold: 0.90  # Minimum confidence for detections
+
+# Features stage
+features:
+  resnet_weights_path: null  # Path to trained ResNet weights (null = use ImageNet pretrained)
+  # resnet_weights_path: "models/features/myresnet/2025-11-21 12-57/fianlEpochWeights.pth"
+
+# GBDT stage
+gbdt:
+  model_path: "models/gbdt/lgbm_data_20210206-1198/2025-11-21_17-33/result.pkl"  # Relative to deployment/
+  model_type: "lightgbm"  # or "xgboost"
+
+# Database settings
+database:
+  enabled: true
+  path: "data/inference_results.db"  # Relative to deployment/
+
+# Device settings
+device: null  # null = auto-detect, or specify: "cuda", "cpu", "mps"
+
+# Output settings
+output:
+  save_images: true
+  save_masks: true
+  save_annotations: true
+
