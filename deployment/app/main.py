@@ -7,6 +7,9 @@ import sys
 import os
 import argparse
 import time
+import threading
+import queue
+import logging
 from pathlib import Path
 
 # Add project root to Python path
@@ -17,7 +20,144 @@ if project_root not in sys.path:
 from deployment.core.segmentation import SegmentationInference
 from deployment.core.feature_extract import FeatureExtractor
 from deployment.core.predict_weight import WeightPredictor
+from deployment.core.tracking import BroilerTracker
 from deployment.database import InferenceDB
+
+
+class InferenceConsumer(threading.Thread):
+    """
+    Stage 2: Inference Core (Consumer)
+    
+    Works in infinite loop, processing frames from InputQueue.
+    Performs: Segmentation → Tracking → Filtering
+    """
+    
+    def __init__(
+        self,
+        input_queue: queue.Queue,
+        output_queue: queue.Queue,
+        config: dict,
+        name: str = "InferenceConsumer"
+    ):
+        """
+        Initialize inference consumer thread.
+        
+        Args:
+            input_queue: Queue with frames from camera.
+                       Format: (frame_id, rgb_image, depth_image_z16)
+            output_queue: Queue for processed results (for Stage 3).
+                        Format: (frame_id, tracked_instances, depth_image)
+            config: Configuration dict
+            name: Thread name
+        """
+        super().__init__(daemon=True, name=name)
+        self.input_queue = input_queue
+        self.output_queue = output_queue
+        self.config = config
+        self.logger = logging.getLogger(self.__class__.__name__)
+        
+        self.running = False
+        
+        # Initialize segmentation
+        seg_config = config.get('segmentation', {})
+        self.segmentation = SegmentationInference(
+            device=seg_config.get('device'),
+            confidence_threshold=seg_config.get('conf_threshold', 0.85),
+            config=config
+        )
+        
+        # Initialize tracker
+        tracker_config = config.get('tracker', {})
+        camera_config = config.get('camera', {})
+        frame_rate = camera_config.get('fps', 30)
+        min_solidity = tracker_config.get('filters', {}).get('min_solidity', 0.90)
+        
+        self.tracker = BroilerTracker(
+            min_solidity=min_solidity,
+            frame_rate=frame_rate
+        )
+        
+        self.logger.info("InferenceConsumer initialized")
+    
+    def start(self):
+        """Start consumer thread."""
+        self.logger.info("Starting inference consumer...")
+        self.running = True
+        super().start()
+        self.logger.info("Inference consumer started")
+    
+    def stop(self):
+        """Stop consumer thread."""
+        self.logger.info("Stopping inference consumer...")
+        self.running = False
+        self.join(timeout=2.0)
+        self.logger.info("Inference consumer stopped")
+    
+    def run(self):
+        """Main consumer loop - processes frames from input queue."""
+        self.logger.info("Inference consumer loop started")
+        
+        while self.running:
+            try:
+                # Get frame from input queue (with timeout for graceful shutdown)
+                try:
+                    frame_data = self.input_queue.get(timeout=1.0)
+                except queue.Empty:
+                    continue
+                
+                frame_id, rgb_image, depth_image_z16 = frame_data
+                
+                # Stage 2.1: Segmentation (YOLO)
+                instances = self.segmentation.segment_frame(rgb_image)
+                
+                if not instances:
+                    # No detections, skip tracking
+                    continue
+                
+                # Stage 2.2: Tracking & Filtering
+                tracked_instances = self.tracker.update(instances)
+                
+                # Stage 2.3: Solidity calculation and filtering
+                # (Already done in tracker.update, but ensure all have it)
+                for inst in tracked_instances:
+                    if 'solidity' not in inst:
+                        # Calculate if missing
+                        if 'mask' in inst:
+                            inst['solidity'] = self.tracker.calculate_solidity(
+                                inst['mask']
+                            )
+                            inst['skip_features'] = (
+                                inst['solidity'] < self.tracker.min_solidity
+                            )
+                        else:
+                            inst['solidity'] = 1.0
+                            inst['skip_features'] = False
+                
+                # Put results in output queue for Stage 3 (Feature Extraction)
+                try:
+                    self.output_queue.put(
+                        (frame_id, tracked_instances, depth_image_z16),
+                        block=False
+                    )
+                except queue.Full:
+                    self.logger.warning(
+                        f"Output queue full, dropping frame {frame_id}"
+                    )
+                
+                self.logger.debug(
+                    f"Processed frame {frame_id}: "
+                    f"{len(tracked_instances)} tracked instances"
+                )
+                
+            except Exception as e:
+                self.logger.error(
+                    f"Error in inference consumer loop: {e}",
+                    exc_info=True
+                )
+                # Continue processing even if one frame fails
+                continue
+        
+        self.logger.info("Inference consumer loop stopped")
 
 
 class MVPInferencePipeline:

@@ -45,6 +45,7 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+*.yaml.example
 
 # IDE
 .vscode/
