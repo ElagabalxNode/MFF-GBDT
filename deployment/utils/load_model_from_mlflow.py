@@ -160,6 +160,395 @@ class ModelLoader:
                     f"Cannot load YOLO model: MLflow unavailable and no cached version. "
                     f"Error: {e}"
                 )
+    
+    def load_scaler(self, run_id: str, artifact_path: str):
+        """
+        Load scaler (MinMaxScaler, etc.) from MLflow with caching.
+        
+        Downloads .pkl file from MLflow artifacts and caches it locally.
+        If MLflow is unavailable but file exists in cache, uses cached version.
+        
+        Args:
+            run_id: MLflow run ID
+            artifact_path: Path to .pkl file within MLflow artifacts (e.g., "feature_scaler.pkl")
+            
+        Returns:
+            Loaded scaler object (e.g., MinMaxScaler)
+            
+        Raises:
+            FileNotFoundError: If scaler not found in MLflow and not in cache
+            RuntimeError: If MLflow connection fails and no cache available
+        """
+        import joblib
+        
+        cache_path = self._get_cache_path(run_id, artifact_path)
+        
+        # Check if file exists in cache
+        if cache_path.exists():
+            self.logger.info(f"Using cached scaler: {cache_path}")
+            return joblib.load(cache_path)
+        
+        # Try to download from MLflow
+        try:
+            self.logger.info(
+                f"Downloading scaler from MLflow: "
+                f"run_id={run_id}, artifact_path={artifact_path}"
+            )
+            artifact_uri = f"runs:/{run_id}/{artifact_path}"
+            
+            # Download artifact to temporary directory
+            temp_dir = mlflow.artifacts.download_artifacts(
+                artifact_uri, dst_path=str(self.cache_dir)
+            )
+            
+            # Find the downloaded file
+            temp_path = Path(temp_dir)
+            if temp_path.is_file():
+                downloaded_file = temp_path
+            else:
+                artifact_name = Path(artifact_path).name
+                downloaded_file = temp_path / artifact_name
+                if not downloaded_file.exists():
+                    # Try to find any .pkl file in the directory
+                    pkl_files = list(temp_path.glob("*.pkl"))
+                    if pkl_files:
+                        downloaded_file = pkl_files[0]
+                    else:
+                        raise FileNotFoundError(
+                            f"Could not find .pkl file in downloaded artifacts: {temp_dir}"
+                        )
+            
+            # Copy to cache location
+            import shutil
+            shutil.copy2(downloaded_file, cache_path)
+            self.logger.info(f"Scaler cached to: {cache_path}")
+            
+            # Load and return
+            return joblib.load(cache_path)
+            
+        except Exception as e:
+            # If download fails, check if we have a cached version
+            if cache_path.exists():
+                self.logger.warning(
+                    f"MLflow download failed ({e}), but using cached scaler: {cache_path}"
+                )
+                return joblib.load(cache_path)
+            else:
+                self.logger.error(
+                    f"Failed to load scaler from MLflow and no cache available: {e}"
+                )
+                raise RuntimeError(
+                    f"Cannot load scaler: MLflow unavailable and no cached version. "
+                    f"Error: {e}"
+                )
+    
+    def load_fusionnet(self, run_id: str, artifact_path: str, device: str = None):
+        """
+        Load FusionNet model from MLflow with caching.
+        
+        Downloads .pth file from MLflow artifacts and caches it locally.
+        Loads model and returns it ready for inference.
+        
+        Args:
+            run_id: MLflow run ID
+            artifact_path: Path to .pth file within MLflow artifacts (e.g., "best_model.pth")
+            device: Device to load model on ('cuda', 'cpu', or None for auto-detect)
+            
+        Returns:
+            Loaded FusionNet model (PyTorch nn.Module)
+            
+        Raises:
+            FileNotFoundError: If model not found in MLflow and not in cache
+            RuntimeError: If MLflow connection fails and no cache available
+        """
+        import torch
+        
+        cache_path = self._get_cache_path(run_id, artifact_path)
+        
+        # Check if file exists in cache
+        if cache_path.exists():
+            self.logger.info(f"Using cached FusionNet: {cache_path}")
+            model_path = str(cache_path)
+        else:
+            # Try to download from MLflow
+            try:
+                self.logger.info(
+                    f"Downloading FusionNet from MLflow: "
+                    f"run_id={run_id}, artifact_path={artifact_path}"
+                )
+                artifact_uri = f"runs:/{run_id}/{artifact_path}"
+                
+                # Download artifact to temporary directory
+                temp_dir = mlflow.artifacts.download_artifacts(
+                    artifact_uri, dst_path=str(self.cache_dir)
+                )
+                
+                # Find the downloaded file
+                temp_path = Path(temp_dir)
+                if temp_path.is_file():
+                    downloaded_file = temp_path
+                else:
+                    artifact_name = Path(artifact_path).name
+                    downloaded_file = temp_path / artifact_name
+                    if not downloaded_file.exists():
+                        # Try to find any .pth file in the directory
+                        pth_files = list(temp_path.glob("*.pth"))
+                        if pth_files:
+                            downloaded_file = pth_files[0]
+                        else:
+                            raise FileNotFoundError(
+                                f"Could not find .pth file in downloaded artifacts: {temp_dir}"
+                            )
+                
+                # Copy to cache location
+                import shutil
+                shutil.copy2(downloaded_file, cache_path)
+                self.logger.info(f"FusionNet cached to: {cache_path}")
+                model_path = str(cache_path)
+                
+            except Exception as e:
+                # If download fails, check if we have a cached version
+                if cache_path.exists():
+                    self.logger.warning(
+                        f"MLflow download failed ({e}), but using cached FusionNet: {cache_path}"
+                    )
+                    model_path = str(cache_path)
+                else:
+                    self.logger.error(
+                        f"Failed to load FusionNet from MLflow and no cache available: {e}"
+                    )
+                    raise RuntimeError(
+                        f"Cannot load FusionNet: MLflow unavailable and no cached version. "
+                        f"Error: {e}"
+                    )
+        
+        # Load model from file
+        # Import FusionNet architecture
+        from training_workspace.features.models.FusonNet import fusonnet50
+        
+        # Determine device
+        if device is None:
+            if torch.cuda.is_available():
+                device = 'cuda'
+            elif torch.backends.mps.is_available():
+                device = 'mps'
+            else:
+                device = 'cpu'
+        
+        # Create model and load weights
+        model = fusonnet50()
+        state_dict = torch.load(model_path, map_location=device)
+        model.load_state_dict(state_dict)
+        model.eval()
+        model = model.to(device)
+        
+        self.logger.info(f"FusionNet loaded on device: {device}")
+        return model
+    
+    def load_pca(self, run_id: str, artifact_path: str):
+        """
+        Load PCA transformer from MLflow with caching.
+        
+        Downloads .pkl file from MLflow artifacts and caches it locally.
+        If MLflow is unavailable but file exists in cache, uses cached version.
+        
+        Args:
+            run_id: MLflow run ID
+            artifact_path: Path to .pkl file within MLflow artifacts (e.g., "models/auto_pca.pkl")
+            
+        Returns:
+            Loaded PCA transformer (sklearn.decomposition.PCA)
+            
+        Raises:
+            FileNotFoundError: If PCA not found in MLflow and not in cache
+            RuntimeError: If MLflow connection fails and no cache available
+        """
+        import joblib
+        
+        cache_path = self._get_cache_path(run_id, artifact_path)
+        
+        # Check if file exists in cache
+        if cache_path.exists():
+            self.logger.info(f"Using cached PCA: {cache_path}")
+            return joblib.load(cache_path)
+        
+        # Try to download from MLflow
+        try:
+            self.logger.info(
+                f"Downloading PCA from MLflow: "
+                f"run_id={run_id}, artifact_path={artifact_path}"
+            )
+            artifact_uri = f"runs:/{run_id}/{artifact_path}"
+            
+            # Download artifact to temporary directory
+            temp_dir = mlflow.artifacts.download_artifacts(
+                artifact_uri, dst_path=str(self.cache_dir)
+            )
+            
+            # Find the downloaded file
+            temp_path = Path(temp_dir)
+            if temp_path.is_file():
+                downloaded_file = temp_path
+            else:
+                artifact_name = Path(artifact_path).name
+                downloaded_file = temp_path / artifact_name
+                if not downloaded_file.exists():
+                    # Try to find any .pkl file in the directory
+                    pkl_files = list(temp_path.glob("*.pkl"))
+                    if pkl_files:
+                        downloaded_file = pkl_files[0]
+                    else:
+                        raise FileNotFoundError(
+                            f"Could not find .pkl file in downloaded artifacts: {temp_dir}"
+                        )
+            
+            # Copy to cache location
+            import shutil
+            shutil.copy2(downloaded_file, cache_path)
+            self.logger.info(f"PCA cached to: {cache_path}")
+            
+            # Load and return
+            return joblib.load(cache_path)
+            
+        except Exception as e:
+            # If download fails, check if we have a cached version
+            if cache_path.exists():
+                self.logger.warning(
+                    f"MLflow download failed ({e}), but using cached PCA: {cache_path}"
+                )
+                return joblib.load(cache_path)
+            else:
+                self.logger.error(
+                    f"Failed to load PCA from MLflow and no cache available: {e}"
+                )
+                raise RuntimeError(
+                    f"Cannot load PCA: MLflow unavailable and no cached version. "
+                    f"Error: {e}"
+                )
+    
+    def load_lightgbm(self, run_id: str, model_uri: str = "model", 
+                     load_method: str = "mlflow"):
+        """
+        Load LightGBM model from MLflow with caching.
+        
+        Supports two loading methods:
+        - "mlflow": Use mlflow.lightgbm.load_model (for models logged with log_model)
+        - "sklearn": Load pickle file directly (for models saved as .pkl)
+        
+        Args:
+            run_id: MLflow run ID
+            model_uri: URI within run (usually "model" for log_model, or path to .pkl)
+            load_method: "mlflow" or "sklearn"
+            
+        Returns:
+            Loaded LightGBM model
+            
+        Raises:
+            RuntimeError: If model cannot be loaded
+        """
+        if load_method == "mlflow":
+            # Use MLflow's LightGBM loader
+            try:
+                import mlflow.lightgbm
+                model_uri_full = f"runs:/{run_id}/{model_uri}"
+                self.logger.info(
+                    f"Loading LightGBM from MLflow: {model_uri_full}"
+                )
+                model = mlflow.lightgbm.load_model(model_uri_full)
+                self.logger.info("LightGBM loaded successfully via MLflow")
+                return model
+            except Exception as e:
+                self.logger.error(f"Failed to load LightGBM via MLflow: {e}")
+                raise RuntimeError(
+                    f"Cannot load LightGBM model via MLflow. Error: {e}"
+                )
+        
+        elif load_method == "sklearn":
+            # Load as pickle file (artifact)
+            import joblib
+            import pickle
+            
+            cache_path = self._get_cache_path(run_id, model_uri)
+            
+            # Check if file exists in cache
+            if cache_path.exists():
+                self.logger.info(f"Using cached LightGBM: {cache_path}")
+                try:
+                    return joblib.load(cache_path)
+                except:
+                    # Try pickle if joblib fails
+                    with open(cache_path, 'rb') as f:
+                        return pickle.load(f)
+            
+            # Try to download from MLflow
+            try:
+                self.logger.info(
+                    f"Downloading LightGBM from MLflow: "
+                    f"run_id={run_id}, model_uri={model_uri}"
+                )
+                artifact_uri = f"runs:/{run_id}/{model_uri}"
+                
+                # Download artifact to temporary directory
+                temp_dir = mlflow.artifacts.download_artifacts(
+                    artifact_uri, dst_path=str(self.cache_dir)
+                )
+                
+                # Find the downloaded file
+                temp_path = Path(temp_dir)
+                if temp_path.is_file():
+                    downloaded_file = temp_path
+                else:
+                    # Try to find .pkl or .txt file (LightGBM can be saved as text)
+                    pkl_files = list(temp_path.glob("*.pkl"))
+                    txt_files = list(temp_path.glob("*.txt"))
+                    if pkl_files:
+                        downloaded_file = pkl_files[0]
+                    elif txt_files:
+                        downloaded_file = txt_files[0]
+                    else:
+                        # Try model_uri as filename
+                        artifact_name = Path(model_uri).name
+                        downloaded_file = temp_path / artifact_name
+                        if not downloaded_file.exists():
+                            raise FileNotFoundError(
+                                f"Could not find model file in downloaded artifacts: {temp_dir}"
+                            )
+                
+                # Copy to cache location
+                import shutil
+                shutil.copy2(downloaded_file, cache_path)
+                self.logger.info(f"LightGBM cached to: {cache_path}")
+                
+                # Load and return
+                try:
+                    return joblib.load(cache_path)
+                except:
+                    with open(cache_path, 'rb') as f:
+                        return pickle.load(f)
+                
+            except Exception as e:
+                # If download fails, check if we have a cached version
+                if cache_path.exists():
+                    self.logger.warning(
+                        f"MLflow download failed ({e}), but using cached LightGBM: {cache_path}"
+                    )
+                    try:
+                        return joblib.load(cache_path)
+                    except:
+                        with open(cache_path, 'rb') as f:
+                            return pickle.load(f)
+                else:
+                    self.logger.error(
+                        f"Failed to load LightGBM from MLflow and no cache available: {e}"
+                    )
+                    raise RuntimeError(
+                        f"Cannot load LightGBM: MLflow unavailable and no cached version. "
+                        f"Error: {e}"
+                    )
+        else:
+            raise ValueError(
+                f"Invalid load_method: {load_method}. Must be 'mlflow' or 'sklearn'"
+            )
 
 
 def load_model_by_run_id(run_id: str, tracking_uri: str = None):

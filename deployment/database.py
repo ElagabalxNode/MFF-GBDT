@@ -89,6 +89,19 @@ class InferenceDB:
             )
         """)
         
+        # Bird records table (final aggregated results per track)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS bird_records (
+                record_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp DATETIME NOT NULL,
+                cam_id TEXT,
+                track_id INTEGER NOT NULL,
+                median_weight REAL NOT NULL,
+                duration_in_frames INTEGER NOT NULL,
+                num_predictions INTEGER NOT NULL
+            )
+        """)
+        
         self.conn.commit()
     
     def save_inference_session(self, image_path: str, instances: List[Dict], 
@@ -195,6 +208,60 @@ class InferenceDB:
         
         row = cursor.fetchone()
         return dict(row) if row else None
+    
+    def save_bird_record(self, timestamp: str, cam_id: str, track_id: int,
+                        median_weight: float, duration_in_frames: int,
+                        num_predictions: int) -> int:
+        """
+        Save aggregated bird record when track is lost.
+        
+        Args:
+            timestamp: Timestamp when track was lost (ISO format string)
+            cam_id: Camera identifier
+            track_id: Track ID
+            median_weight: Median weight of the track (kg)
+            duration_in_frames: Duration of track in frames
+            num_predictions: Number of weight predictions in track
+            
+        Returns:
+            record_id
+        """
+        cursor = self.conn.cursor()
+        
+        cursor.execute("""
+            INSERT INTO bird_records
+            (timestamp, cam_id, track_id, median_weight, duration_in_frames, num_predictions)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (
+            timestamp,
+            cam_id,
+            track_id,
+            median_weight,
+            duration_in_frames,
+            num_predictions
+        ))
+        
+        self.conn.commit()
+        return cursor.lastrowid
+    
+    def get_recent_bird_records(self, limit: int = 10) -> List[Dict]:
+        """
+        Get recent bird records.
+        
+        Args:
+            limit: Maximum number of records to return
+            
+        Returns:
+            List of bird record dicts
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT * FROM bird_records
+            ORDER BY timestamp DESC
+            LIMIT ?
+        """, (limit,))
+        
+        return [dict(row) for row in cursor.fetchall()]
     
     def close(self):
         """Close database connection"""

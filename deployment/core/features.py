@@ -1,11 +1,214 @@
-import pandas as pd
-import numpy as  np
-import cv2
-import os
-from sklearn.preprocessing import MinMaxScaler
-from sklearn.model_selection import train_test_split
-from datetime import datetime
+"""
+Manual feature extraction for broiler weight estimation.
 
+This module provides functions to extract 25 hand-crafted features
+(14 2D + 11 3D) from binary mask and depth image.
+"""
+
+import sys
+import os
+import numpy as np
+import cv2
+
+# Add project root to Python path
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+def extract_manual_features(mask: np.ndarray, depth_image_z16: np.ndarray) -> np.ndarray:
+    """
+    Extract 25 hand-crafted features from binary mask and depth image.
+    
+    This function ports the logic from chickenFeatureExt() for inference use.
+    
+    Args:
+        mask: Binary mask (uint8, 0 or 255), shape (H, W)
+        depth_image_z16: Depth image in Z16 format (int16, mm), shape (H, W)
+        
+    Returns:
+        numpy array of 25 features in this order:
+        [area, perimeter, min_rect_width, min_rect_high, approx_area,
+         approx_perimeter, extent, hull_perimeter, hull_area, solidity,
+         max_defect_dist, sum_defect_dist, equi_diameter, ellipse_long,
+         ellipse_short, eccentricity, volume, maxHeight, minHeight,
+         max2min, meanHeight, mean2min, mean2max, stdHeight, heightSum]
+    """
+    if mask is None or mask.size == 0:
+        return np.zeros(25)
+    
+    # Threshold mask to binary (0 or 1)
+    ret, thresh = cv2.threshold(mask, 200, 1, 0)
+    
+    # Find contours
+    contours, hierarchy = cv2.findContours(
+        thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+    )
+    
+    if not contours:
+        return np.zeros(25)
+    
+    # Get contour with maximum area
+    areas = [cv2.contourArea(c) for c in contours]
+    max_area_idx = areas.index(max(areas))
+    cnt = contours[max_area_idx]
+    area = max(areas)  # Projected area
+    
+    # === 2D FEATURES ===
+    
+    # 1. Perimeter
+    perimeter = cv2.arcLength(cnt, True)
+    
+    # 2-3. Minimum bounding rectangle
+    maxArea_min_rect = cv2.minAreaRect(cnt)
+    min_rect_width = maxArea_min_rect[1][0]
+    min_rect_high = maxArea_min_rect[1][1]
+    
+    # 4-5. Approximated contour
+    epsilon = 0.01 * cv2.arcLength(cnt, True)
+    approx = cv2.approxPolyDP(cnt, epsilon, True)
+    approx_area = cv2.contourArea(approx)
+    approx_perimeter = cv2.arcLength(approx, True)
+    
+    # 6. Extent (ratio of contour area to bounding rectangle area)
+    x, y, w, h = cv2.boundingRect(cnt)
+    rect_area = w * h
+    extent = float(area) / rect_area if rect_area > 0 else 0.0
+    
+    # 7-9. Convex hull
+    hull = cv2.convexHull(cnt)
+    hull_perimeter = cv2.arcLength(hull, True)
+    hull_area = cv2.contourArea(hull)
+    solidity = float(area) / hull_area if hull_area > 0 else 0.0
+    
+    # 10-11. Convexity defects
+    hull_indices = cv2.convexHull(cnt, returnPoints=False)
+    if hull_indices.size > 0:
+        defects = cv2.convexityDefects(cnt, hull_indices)
+        if defects is not None and defects.shape[0] > 0:
+            distenceList = [defects[i, 0, 3] for i in range(defects.shape[0])]
+            max_defect_dist = max(distenceList)
+            sum_defect_dist = sum(distenceList)
+        else:
+            max_defect_dist = 0.0
+            sum_defect_dist = 0.0
+    else:
+        max_defect_dist = 0.0
+        sum_defect_dist = 0.0
+    
+    # 12. Equivalent diameter
+    equi_diameter = np.sqrt(4 * area / np.pi) if area > 0 else 0.0
+    
+    # 13-14. Ellipse fitting
+    try:
+        ellipse = cv2.fitEllipse(cnt)
+        ellipse_short = ellipse[1][0]
+        ellipse_long = ellipse[1][1]
+    except:
+        ellipse_short = 0.0
+        ellipse_long = 0.0
+    
+    # 15. Eccentricity
+    M = cv2.moments(cnt)
+    denominator = np.sqrt(
+        pow(2 * M['mu11'], 2) + pow(M['mu20'] - M['mu02'], 2)
+    )
+    eps = 1e-4
+    if denominator > eps:
+        cosmin = (M['mu20'] - M['mu02']) / denominator
+        sinmin = 2 * M['mu11'] / denominator
+        cosmax = -cosmin
+        sinmax = -sinmin
+        imin = (0.5 * (M['mu20'] + M['mu02']) -
+                0.5 * (M['mu20'] - M['mu02']) * cosmin -
+                M['mu11'] * sinmin)
+        imax = (0.5 * (M['mu20'] + M['mu02']) -
+                0.5 * (M['mu20'] - M['mu02']) * cosmax -
+                M['mu11'] * sinmax)
+        ratio = imin / imax if imax > 0 else 0.0
+        eccentricity = np.sqrt(1 - ratio * ratio)
+    else:
+        eccentricity = 0.0
+    
+    # === 3D FEATURES ===
+    
+    if depth_image_z16 is None or depth_image_z16.size == 0:
+        # No depth data, return zeros for 3D features
+        volume = 0.0
+        maxHeight = 0.0
+        minHeight = 0.0
+        max2min = 0.0
+        meanHeight = 0.0
+        mean2min = 0.0
+        mean2max = 0.0
+        stdHeight = 0.0
+        heightSum = 0.0
+    else:
+        # Convert depth to uint8 for processing (same as training)
+        # Z16 format: int16, mm units
+        # Convert to visualization format: alpha = 0.17
+        conImg = cv2.convertScaleAbs(depth_image_z16, alpha=0.17)
+        
+        # Apply mask to depth
+        mul_img = cv2.multiply(thresh.astype(np.uint8), conImg)
+        deepArr = mul_img[mul_img > 0]
+        
+        if len(deepArr) > 0:
+            maxHeight = float(np.max(mul_img))
+            minHeight = float(np.min(deepArr))
+            meanHeight = float(np.mean(deepArr))
+            max2min = maxHeight - minHeight
+            mean2min = meanHeight - minHeight
+            mean2max = maxHeight - meanHeight
+            stdHeight = float(np.std(deepArr))
+            heightSum = float(np.sum(mul_img))
+            
+            # Volume calculation
+            volumeZhu = area * maxHeight
+            volume = volumeZhu - heightSum
+        else:
+            maxHeight = 0.0
+            minHeight = 0.0
+            meanHeight = 0.0
+            max2min = 0.0
+            mean2min = 0.0
+            mean2max = 0.0
+            stdHeight = 0.0
+            heightSum = 0.0
+            volume = 0.0
+    
+    # Return features in the exact order expected by scaler
+    features = np.array([
+        area,                    # 0
+        perimeter,               # 1
+        min_rect_width,         # 2
+        min_rect_high,          # 3
+        approx_area,            # 4
+        approx_perimeter,       # 5
+        extent,                 # 6
+        hull_perimeter,         # 7
+        hull_area,              # 8
+        solidity,               # 9
+        max_defect_dist,        # 10
+        sum_defect_dist,        # 11
+        equi_diameter,          # 12
+        ellipse_long,           # 13
+        ellipse_short,          # 14
+        eccentricity,           # 15
+        volume,                 # 16
+        maxHeight,              # 17
+        minHeight,              # 18
+        max2min,                # 19
+        meanHeight,             # 20
+        mean2min,               # 21
+        mean2max,               # 22
+        stdHeight,              # 23
+        heightSum               # 24
+    ], dtype=np.float32)
+    
+    return features
+
+
+# Legacy functions below (kept for backward compatibility)
 # def getWeightFromExcel():
 #     """
 #     Get weight dictionary from excel file in each folder

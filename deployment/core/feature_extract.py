@@ -1,146 +1,164 @@
 """
-Feature extraction module for MVP inference
-Extracts 25 hand-crafted 2D/3D features + 2048 ResNet50 features
+Feature extraction module for MVP inference pipeline.
+
+Extracts 25 hand-crafted features (with MinMaxScaler normalization) +
+2048 auto features from FusionNet backbone.
 """
 
 import sys
 import os
+import logging
+import numpy as np
 
 # Add project root to Python path
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-import torch
-import cv2
-import numpy as np
-from PIL import Image
-from torchvision.transforms import transforms
-import torchvision.models as models
-
-# Import manual feature extraction
-from deployment.core.features import chickenFeatureExt
+from deployment.core.features import extract_manual_features
+from deployment.core.fusion_features import FusionNetFeatureExtractor
+from deployment.utils.load_model_from_mlflow import ModelLoader
 
 
 class FeatureExtractor:
-    """Extract 25 manual + 2048 ResNet features for each instance"""
+    """
+    Extract features for GBDT model: 25 manual (normalized) + 2048 auto.
     
-    def __init__(self, resnet_weights_path: str = None, device: str = None):
+    Features:
+    - Manual: 25 hand-crafted 2D/3D features, normalized with MinMaxScaler
+    - Auto: 2048-dim vector from FusionNet backbone
+    """
+    
+    def __init__(self, config: dict, device: str = None):
         """
-        Initialize feature extractor
+        Initialize feature extractor with MLflow models.
         
         Args:
-            resnet_weights_path: Path to trained ResNet50 weights (optional)
+            config: Configuration dict with MLflow settings
             device: 'cuda', 'cpu', or None (auto-detect)
         """
+        self.config = config
+        self.logger = logging.getLogger(self.__class__.__name__)
+        
         # Device setup
         if device is None:
+            import torch
             if torch.cuda.is_available():
-                self.device = torch.device('cuda')
+                self.device = 'cuda'
             elif torch.backends.mps.is_available():
-                self.device = torch.device('mps')
+                self.device = 'mps'
             else:
-                self.device = torch.device('cpu')
+                self.device = 'cpu'
         else:
-            self.device = torch.device(device)
+            self.device = device
         
-        # Load ResNet50 for feature extraction
-        self.resnet = models.resnet50(pretrained=False)
-        # Remove final classification layer, keep features
-        self.resnet = torch.nn.Sequential(*list(self.resnet.children())[:-1])
-        self.resnet.eval()
-        self.resnet.to(self.device)
+        # Initialize ModelLoader
+        mlflow_config = config.get('mlflow', {})
+        tracking_uri = mlflow_config.get('tracking_uri', 'http://localhost:5000')
+        cache_dir = mlflow_config.get('cache_dir', 'models_cache')
+        self.model_loader = ModelLoader(tracking_uri=tracking_uri, cache_dir=cache_dir)
         
-        if resnet_weights_path and os.path.exists(resnet_weights_path):
-            # Load trained weights if provided
-            checkpoint = torch.load(resnet_weights_path, map_location=self.device)
-            self.resnet.load_state_dict(checkpoint)
-            print(f"ResNet weights loaded from {resnet_weights_path}")
+        # Load MinMaxScaler for manual features
+        features_config = config.get('features', {})
+        manual_config = features_config.get('manual', {}).get('scaler', {})
+        
+        if manual_config.get('source') == 'mlflow':
+            run_id = manual_config.get('mlflow_run_id')
+            artifact_path = manual_config.get('artifact_path', 'feature_scaler.pkl')
+            
+            if not run_id or run_id == "REPLACE_WITH_SCALER_RUN_ID":
+                raise ValueError(
+                    "MLflow run_id for scaler not configured. "
+                    "Set features.manual.scaler.mlflow_run_id in config.yaml"
+                )
+            
+            self.logger.info("Loading MinMaxScaler from MLflow...")
+            self.scaler = self.model_loader.load_scaler(run_id, artifact_path)
+            self.logger.info("MinMaxScaler loaded successfully")
         else:
-            print("Using ImageNet-pretrained ResNet50 (no fine-tuning)")
+            raise ValueError(
+                "Scaler source must be 'mlflow'. "
+                "Local scaler loading not implemented."
+            )
         
-        # Image preprocessing for ResNet
-        self.transform = transforms.Compose([
-            transforms.Resize((224, 224)),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                               std=[0.229, 0.224, 0.225])
-        ])
+        # Load FusionNet for auto features
+        auto_config = features_config.get('auto', {}).get('weights', {})
+        
+        if auto_config.get('source') == 'mlflow':
+            run_id = auto_config.get('mlflow_run_id')
+            artifact_path = auto_config.get('artifact_path', 'best_model.pth')
+            
+            if not run_id or run_id == "REPLACE_WITH_FUSION_RUN_ID":
+                raise ValueError(
+                    "MLflow run_id for FusionNet not configured. "
+                    "Set features.auto.weights.mlflow_run_id in config.yaml"
+                )
+            
+            self.logger.info("Loading FusionNet from MLflow...")
+            fusionnet_model = self.model_loader.load_fusionnet(
+                run_id, artifact_path, device=self.device
+            )
+            self.fusion_extractor = FusionNetFeatureExtractor(
+                fusionnet_model, device=self.device
+            )
+            self.logger.info("FusionNet loaded successfully")
+        else:
+            raise ValueError(
+                "FusionNet source must be 'mlflow'. "
+                "Local model loading not implemented."
+            )
     
-    def extract_manual_features(self, mask: np.ndarray, depth_image: np.ndarray = None) -> np.ndarray:
+    def extract_manual_features(self, mask: np.ndarray, depth_image_z16: np.ndarray = None) -> np.ndarray:
         """
-        Extract 25 hand-crafted 2D/3D features from mask and depth image
+        Extract 25 hand-crafted features and apply MinMaxScaler normalization.
         
         Args:
-            mask: Binary mask (numpy array, uint8)
-            depth_image: Depth image (numpy array, optional)
+            mask: Binary mask (uint8, 0 or 255), shape (H, W)
+            depth_image_z16: Depth image in Z16 format (int16, mm), shape (H, W)
             
         Returns:
-            Array of 25 features
+            Normalized array of 25 features
         """
-        # TODO: Implement or adapt from features/extraction/manual_features.py
-        # This should extract:
-        # - 2D features: area, perimeter, minRect, hull, convexity defects, etc.
-        # - 3D features: volume, height statistics (max, min, mean, std), etc.
+        # Extract raw features
+        raw_features = extract_manual_features(mask, depth_image_z16)
         
-        # Placeholder - needs implementation
-        features = np.zeros(25)
+        # Apply MinMaxScaler (fitted on training data)
+        # CRITICAL: Use transform, NOT fit_transform!
+        normalized_features = self.scaler.transform(raw_features.reshape(1, -1))
         
-        # Example: basic 2D features
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-        if len(contours) > 0:
-            largest_contour = max(contours, key=cv2.contourArea)
-            features[0] = cv2.contourArea(largest_contour)  # Area
-            features[1] = cv2.arcLength(largest_contour, True)  # Perimeter
-            # ... add more features
-        
-        return features
+        return normalized_features.flatten()
     
-    def extract_resnet_features(self, maskImg: np.ndarray) -> np.ndarray:
+    def extract_auto_features(self, maskImg: np.ndarray) -> np.ndarray:
         """
-        Extract 2048 ResNet50 features from masked image
+        Extract 2048-dim auto features from FusionNet backbone.
         
         Args:
-            maskImg: Masked image (numpy array, RGB)
+            maskImg: Masked image (RGB, numpy array, uint8), shape (H, W, 3)
+                    Bird on black background
             
         Returns:
             Array of 2048 features
         """
-        # Convert to PIL Image
-        if maskImg.dtype != np.uint8:
-            maskImg = (maskImg * 255).astype(np.uint8)
-        
-        pil_img = Image.fromarray(cv2.cvtColor(maskImg, cv2.COLOR_BGR2RGB))
-        
-        # Preprocess and extract features
-        img_tensor = self.transform(pil_img).unsqueeze(0).to(self.device)
-        
-        with torch.no_grad():
-            features = self.resnet(img_tensor)
-        
-        # Flatten to 2048-dim vector
-        features = features.squeeze().cpu().numpy()
-        
-        return features
+        return self.fusion_extractor.extract_features(maskImg)
     
-    def extract_all_features(self, mask: np.ndarray, maskImg: np.ndarray, 
-                            depth_image: np.ndarray = None) -> np.ndarray:
+    def extract_all_features(self, mask: np.ndarray, maskImg: np.ndarray,
+                            depth_image_z16: np.ndarray = None) -> np.ndarray:
         """
-        Extract all features: 25 manual + 2048 ResNet = 2073 features
+        Extract all features: 25 manual (normalized) + 2048 auto = 2073 features.
         
         Args:
-            mask: Binary mask
-            maskImg: Masked image
-            depth_image: Depth image (optional)
+            mask: Binary mask (uint8, 0 or 255)
+            maskImg: Masked image (RGB, uint8)
+            depth_image_z16: Depth image in Z16 format (int16, mm)
             
         Returns:
             Combined feature vector (2073 dim)
         """
-        manual_features = self.extract_manual_features(mask, depth_image)
-        resnet_features = self.extract_resnet_features(maskImg)
+        manual_features = self.extract_manual_features(mask, depth_image_z16)
+        auto_features = self.extract_auto_features(maskImg)
         
-        # Combine: 25 manual + 2048 ResNet = 2073
-        all_features = np.concatenate([manual_features, resnet_features])
+        # Combine: 25 manual + 2048 auto = 2073
+        all_features = np.concatenate([manual_features, auto_features])
         
         return all_features
 

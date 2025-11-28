@@ -260,3 +260,105 @@ class BroilerTracker:
         
         return intersection / union
 
+
+class TrackBuffer:
+    """
+    Buffer for storing weight predictions per track_id.
+    
+    Tracks weight predictions for each active track and provides
+    aggregation methods (median) when track is lost.
+    """
+    
+    def __init__(self):
+        """
+        Initialize track buffer.
+        
+        Stores: track_id -> list of weights
+        """
+        self.tracks = {}  # Dict[int, List[float]]
+        self.track_start_frame = {}  # Dict[int, int] - frame when track started
+        self.current_frame = 0
+        self.logger = logging.getLogger(self.__class__.__name__)
+    
+    def set_current_frame(self, frame_id: int):
+        """Update current frame ID."""
+        self.current_frame = frame_id
+    
+    def add_weight(self, track_id: int, weight: float):
+        """
+        Add weight prediction to track buffer.
+        
+        Args:
+            track_id: Track ID
+            weight: Predicted weight (kg)
+        """
+        if track_id not in self.tracks:
+            self.tracks[track_id] = []
+            self.track_start_frame[track_id] = self.current_frame
+        
+        self.tracks[track_id].append(weight)
+    
+    def get_median_weight(self, track_id: int) -> float:
+        """
+        Calculate median weight for a track.
+        
+        Args:
+            track_id: Track ID
+            
+        Returns:
+            Median weight (kg), or 0.0 if track not found or empty
+        """
+        if track_id not in self.tracks or len(self.tracks[track_id]) == 0:
+            return 0.0
+        
+        weights = self.tracks[track_id]
+        return float(np.median(weights))
+    
+    def get_track_duration(self, track_id: int) -> int:
+        """
+        Get track duration in frames.
+        
+        Args:
+            track_id: Track ID
+            
+        Returns:
+            Duration in frames (number of weight predictions)
+        """
+        if track_id not in self.tracks:
+            return 0
+        
+        return len(self.tracks[track_id])
+    
+    def remove_track(self, track_id: int):
+        """
+        Remove track from buffer.
+        
+        Args:
+            track_id: Track ID to remove
+        """
+        if track_id in self.tracks:
+            del self.tracks[track_id]
+        if track_id in self.track_start_frame:
+            del self.track_start_frame[track_id]
+    
+    def get_active_tracks(self) -> list:
+        """
+        Get list of active track IDs.
+        
+        Returns:
+            List of track IDs
+        """
+        return list(self.tracks.keys())
+    
+    def has_track(self, track_id: int) -> bool:
+        """
+        Check if track exists in buffer.
+        
+        Args:
+            track_id: Track ID
+            
+        Returns:
+            True if track exists
+        """
+        return track_id in self.tracks
+
