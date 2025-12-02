@@ -10,6 +10,7 @@ import time
 import threading
 import queue
 import logging
+import logging.handlers
 from datetime import datetime
 from pathlib import Path
 
@@ -154,6 +155,17 @@ class InferenceConsumer(threading.Thread):
                             f"Frame {frame_id}, track {track_id}: "
                             f"skipping features (solidity={inst.get('solidity', 0):.3f})"
                         )
+                        
+                        # Debug: Save skipped detection to DB
+                        self.db.save_raw_detection(
+                            frame_id=frame_id,
+                            track_id=track_id,
+                            weight=None,
+                            score=inst.get('score', 0.0),
+                            box=inst.get('box', [0, 0, 0, 0]),
+                            solidity=inst.get('solidity', 0.0),
+                            features=None
+                        )
                         continue
                     
                     try:
@@ -169,6 +181,17 @@ class InferenceConsumer(threading.Thread):
                         
                         # Stage 5: Add to track buffer
                         self.track_buffer.add_weight(track_id, weight)
+                        
+                        # Debug: Save raw detection to DB
+                        self.db.save_raw_detection(
+                            frame_id=frame_id,
+                            track_id=track_id,
+                            weight=weight,
+                            score=inst.get('score', 0.0),
+                            box=inst.get('box', [0, 0, 0, 0]),
+                            solidity=inst.get('solidity', 0.0),
+                            features=features.tolist()
+                        )
                         
                         self.logger.debug(
                             f"Frame {frame_id}, track {track_id}: "
@@ -448,8 +471,36 @@ def load_config(config_path: str = None) -> dict:
         )
 
 
+
+def setup_logging(log_dir: str = 'logs'):
+    """
+    Setup logging with rotation.
+    
+    Args:
+        log_dir: Directory to store logs
+    """
+    os.makedirs(log_dir, exist_ok=True)
+    log_file = os.path.join(log_dir, 'pipeline.log')
+    
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler(),
+            logging.handlers.RotatingFileHandler(
+                log_file, 
+                maxBytes=10*1024*1024,  # 10 MB
+                backupCount=5
+            )
+        ]
+    )
+
+
 def main():
     """Main entrypoint"""
+    # Setup logging first
+    setup_logging()
+    
     parser = argparse.ArgumentParser(description='MFF-GBDT MVP Inference Pipeline')
     parser.add_argument('--input', type=str, required=False,
                        help='Input image path or directory (required for batch mode)')

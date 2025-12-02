@@ -102,6 +102,24 @@ class InferenceDB:
             )
         """)
         
+        # Raw detections table for debugging (frame-by-frame)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS raw_detections (
+                detection_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp DATETIME NOT NULL,
+                frame_id INTEGER NOT NULL,
+                track_id INTEGER NOT NULL,
+                predicted_weight REAL,
+                confidence_score REAL,
+                solidity REAL,
+                box_x1 INTEGER,
+                box_y1 INTEGER,
+                box_x2 INTEGER,
+                box_y2 INTEGER,
+                features_json TEXT
+            )
+        """)
+        
         self.conn.commit()
     
     def save_inference_session(self, image_path: str, instances: List[Dict], 
@@ -209,6 +227,46 @@ class InferenceDB:
         row = cursor.fetchone()
         return dict(row) if row else None
     
+    def save_raw_detection(self, frame_id: int, track_id: int, 
+                          weight: float, score: float, box: list, 
+                          solidity: float = 0.0, features: list = None):
+        """
+        Save frame-by-frame detection for debugging.
+        
+        Args:
+            frame_id: Frame number
+            track_id: Track ID
+            weight: Predicted weight (can be None if skipped)
+            score: Confidence score
+            box: Bounding box [x1, y1, x2, y2]
+            solidity: Solidity value
+            features: List of features (optional)
+        """
+        cursor = self.conn.cursor()
+        
+        # Handle box
+        x1, y1, x2, y2 = 0, 0, 0, 0
+        if box and len(box) == 4:
+            x1, y1, x2, y2 = box
+            
+        cursor.execute("""
+            INSERT INTO raw_detections 
+            (timestamp, frame_id, track_id, predicted_weight, 
+             confidence_score, solidity, box_x1, box_y1, box_x2, box_y2, features_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            datetime.now().isoformat(),
+            frame_id,
+            track_id,
+            weight,
+            score,
+            solidity,
+            x1, y1, x2, y2,
+            json.dumps(features) if features is not None else None
+        ))
+        
+        self.conn.commit()
+
     def save_bird_record(self, timestamp: str, cam_id: str, track_id: int,
                         median_weight: float, duration_in_frames: int,
                         num_predictions: int) -> int:
