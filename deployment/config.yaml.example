@@ -40,17 +40,26 @@ features:
   manual:
     # Scaler trained on training data (from prepare_fusion_split.py)
     scaler:
-      source: "mlflow"
+      source: "mlflow" # or "local"
+      # For local: path relative to deployment/ or absolute path
+      local_path: "data/models/pca/auto_scaler.pkl"
+      # For mlflow:
       mlflow_run_id: "REPLACE_WITH_SCALER_RUN_ID"
       artifact_path: "feature_scaler.pkl"
   
   auto:
     # FusionNet weights (from train_fusion_mlflow.py)
     weights:
-      source: "mlflow"
+      source: "mlflow" # or "registry" or "local"
+      # For registry: use model_name and version/stage
+      model_name: "FusionNet"  # Name in Model Registry
+      version: null  # Specific version number (optional)
+      stage: "Production"  # Stage: Production, Staging, Archived (optional, takes precedence over version)
+      # For mlflow: use run_id and artifact_path
       mlflow_run_id: "REPLACE_WITH_FUSION_RUN_ID"
-      # Usually saved as 'best_model.pth' via log_artifact
-      artifact_path: "best_model.pth"
+      artifact_path: "best_model.pth"  # Usually saved as 'best_model.pth' via log_artifact
+      # For local: path relative to deployment/ or absolute path
+      local_path: null
     arch: "fusionnet50"
 
   pca:
@@ -70,14 +79,17 @@ features:
 gbdt:
   # LightGBM model
   model:
-    source: "mlflow"
+    source: "mlflow" # or "registry" or "local"
+    # For registry: use model_name and version/stage
+    model_name: "BroilerWeightModel"  # Name in Model Registry
+    version: null  # Specific version number (optional)
+    stage: "Production"  # Stage: Production, Staging, Archived (optional, takes precedence over version)
+    # For mlflow: use run_id and model_uri
     mlflow_run_id: "REPLACE_WITH_LGBM_RUN_ID"
-    # If using log_model, MLflow creates 'model' folder. 
-    # LightGBM can be loaded as folder or as model.txt file inside.
-    # For simplicity, load as generic artifact file if saved as pickle,
-    # or use MLflow loader.
-    load_method: "sklearn" # lightgbm/sklearn (object loading) or file (path)
-    model_uri: "model" # URI within run (usually just "model")
+    model_uri: "model"  # URI within run (usually just "model")
+    load_method: "mlflow"  # mlflow/lightgbm/sklearn (object loading) or file (path)
+    # For local: path relative to deployment/ or absolute path
+    local_path: null
 
 # --- Database ---
 database:

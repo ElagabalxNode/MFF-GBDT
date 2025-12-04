@@ -45,7 +45,6 @@ venv/
 ENV/
 env.bak/
 venv.bak/
-*.yaml.example
 
 # IDE
 .vscode/
@@ -75,3 +74,7 @@ data/
 *.md
 *.png
 *.pdf
+fix_mlflow_paths.py
+deployment/models_cache/
+logs/
+deployment/config.yaml

@@ -14,7 +14,6 @@ if project_root not in sys.path:
 import torch
 import cv2
 import numpy as np
-from PIL import Image
 from ultralytics import YOLO
 
 # Import ModelLoader for MLflow integration
@@ -37,6 +36,11 @@ class SegmentationInference:
         """
         self.confidence_threshold = confidence_threshold
         self.config = config or {}
+        
+        # Load filtering options from config
+        seg_config = self.config.get('segmentation', {})
+        self.filter_border = seg_config.get('filter_border', False)
+        self.border_margin = seg_config.get('border_margin', 5)
         
         # Device setup for YOLO (YOLO uses string format)
         if device is None:
@@ -75,6 +79,42 @@ class SegmentationInference:
                 )
             
             model_path = model_loader.load_yolo_model(run_id, artifact_path)
+        
+        elif model_source == 'local':
+            # Load from local file
+            seg_config = self.config.get('segmentation', {}).get('model', {})
+            local_path = seg_config.get('local_path')
+            
+            # If local_path not specified, try using artifact_path as fallback
+            if not local_path:
+                local_path = seg_config.get('artifact_path')
+            
+            if not local_path:
+                raise ValueError(
+                    "Local path for YOLO model not configured. "
+                    "Set segmentation.model.local_path in config.yaml"
+                )
+            
+            # Resolve path: if relative, assume relative to deployment/ directory
+            from pathlib import Path
+            deployment_dir = Path(__file__).parent.parent
+            model_path_obj = Path(local_path)
+            
+            if not model_path_obj.is_absolute():
+                model_path_obj = deployment_dir / model_path_obj
+            
+            model_path = str(model_path_obj)
+            
+            if not os.path.exists(model_path):
+                raise FileNotFoundError(
+                    f"YOLO model file not found: {model_path}. "
+                    f"Check segmentation.model.local_path in config.yaml"
+                )
+        else:
+            raise ValueError(
+                f"Unknown YOLO model source: {model_source}. "
+                "Must be 'mlflow' or 'local'."
+            )
         
         if not model_path or not os.path.exists(model_path):
             raise FileNotFoundError(f"Model weights not found at {model_path}")
@@ -163,7 +203,7 @@ class SegmentationInference:
         
         return instances
     
-    def segment_frame(self, rgb_image: np.ndarray) -> list:
+    def segment_frame(self, rgb_image: np.ndarray, visualize: bool = False, save_path: str = None) -> list:
         """
         Segment a single RGB frame (numpy array) and return instances.
         
@@ -172,6 +212,8 @@ class SegmentationInference:
         
         Args:
             rgb_image: RGB image as numpy array (H, W, 3), dtype uint8
+            visualize: If True, create visualization image with all detections
+            save_path: Path to save visualization (if visualize=True)
             
         Returns:
             List of dicts, each containing:
@@ -180,17 +222,29 @@ class SegmentationInference:
                 - 'maskImg': masked image (numpy array, RGB)
                 - 'score': confidence score
         """
+        import logging
+        logger = logging.getLogger(self.__class__.__name__)
+        
         if rgb_image is None or rgb_image.size == 0:
             return []
         
         img_height, img_width = rgb_image.shape[:2]
+        
+        # Use a threshold slightly lower than the target threshold to filter
+        # noise early. This prevents clogging the max_det buffer with
+        # very low confidence detections.
+        yolo_conf = max(0.2, self.confidence_threshold - 0.1)
+        logger.debug(
+            f"YOLO inference with conf={yolo_conf}, "
+            f"final threshold={self.confidence_threshold}"
+        )
         
         # Run YOLOv8 inference on numpy array
         # YOLO expects RGB format, which we have
         results = self.model.predict(
             rgb_image,
             device=self.device,
-            conf=self.confidence_threshold,
+            conf=yolo_conf,
             verbose=False
         )
         
@@ -202,19 +256,52 @@ class SegmentationInference:
         scores = result_obj.boxes.conf.cpu().numpy()
         masks = result_obj.masks  # YOLO masks object
         
+        # Create visualization if requested
+        vis_image = None
+        if visualize:
+            vis_image = rgb_image.copy()
+            # Convert RGB to BGR for OpenCV drawing
+            vis_image_bgr = cv2.cvtColor(vis_image, cv2.COLOR_RGB2BGR)
+        
+        total_detections = len(boxes)
+        filtered_by_conf = 0
+        filtered_by_border = 0
         instances = []
+        
         for idx in range(len(boxes)):
             score = float(scores[idx])
+            x1, y1, x2, y2 = boxes[idx]
+            
+            # Log all detections for debugging
+            logger.debug(f"Detection {idx}: score={score:.3f}, box=({x1:.1f},{y1:.1f},{x2:.1f},{y2:.1f})")
+            
+            # Visualize all detections (even filtered ones)
+            if visualize:
+                color = (0, 255, 0) if score >= self.confidence_threshold else (0, 0, 255)  # Green if passed, Red if filtered
+                thickness = 2 if score >= self.confidence_threshold else 1
+                cv2.rectangle(vis_image_bgr, (int(x1), int(y1)), (int(x2), int(y2)), color, thickness)
+                label = f"{score:.2f}"
+                cv2.putText(vis_image_bgr, label, (int(x1), int(y1) - 5), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
             
             # Level 1 Filter: Confidence threshold
             if score < self.confidence_threshold:
+                filtered_by_conf += 1
                 continue
-            
-            x1, y1, x2, y2 = boxes[idx]
             
             # Level 1 Filter: Border check - reject if bbox intersects frame border
-            if x1 <= 0 or y1 <= 0 or x2 >= img_width or y2 >= img_height:
-                continue
+            # NOTE: This is more strict than test.py - can be disabled in config
+            if self.filter_border:
+                if (x1 <= self.border_margin or y1 <= self.border_margin or 
+                    x2 >= (img_width - self.border_margin) or 
+                    y2 >= (img_height - self.border_margin)):
+                    filtered_by_border += 1
+                    if visualize:
+                        cv2.putText(vis_image_bgr, "BORDER", 
+                                   (int(x1), int(y2) + 15), 
+                                   cv2.FONT_HERSHEY_SIMPLEX, 0.4, 
+                                   (0, 165, 255), 1)
+                    continue
             
             # Get mask for this instance
             if masks is not None and masks.data is not None:
@@ -252,6 +339,40 @@ class SegmentationInference:
                 'maskImg': maskImg,  # Masked image (RGB)
                 'score': score
             })
+            
+            # Draw accepted detection on visualization
+            if visualize:
+                cv2.rectangle(vis_image_bgr, (box[0], box[1]), (box[2], box[3]), (0, 255, 0), 2)
+                cv2.putText(vis_image_bgr, f"ACCEPTED {score:.2f}", (box[0], box[1] - 5), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+        
+        # Log statistics with more details
+        if total_detections == 0:
+            logger.warning(
+                f"YOLO found NO detections (conf={yolo_conf}). "
+                f"Image may not contain chickens or model needs retraining."
+            )
+        else:
+            logger.info(
+                f"Segmentation stats: total={total_detections}, "
+                f"accepted={len(instances)} (threshold={self.confidence_threshold}), "
+                f"filtered_by_conf={filtered_by_conf}, "
+                f"filtered_by_border={filtered_by_border}"
+            )
+            # Log score distribution for debugging
+            if len(scores) > 0:
+                min_score = float(scores.min())
+                max_score = float(scores.max())
+                mean_score = float(scores.mean())
+                logger.debug(
+                    f"Score distribution: min={min_score:.3f}, "
+                    f"max={max_score:.3f}, mean={mean_score:.3f}"
+                )
+        
+        # Save visualization if requested
+        if visualize and save_path:
+            cv2.imwrite(save_path, vis_image_bgr)
+            logger.info(f"Segmentation visualization saved to: {save_path}")
         
         return instances
     

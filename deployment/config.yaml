@@ -1,7 +1,8 @@
 # --- Global MLflow Settings ---
 mlflow:
   # MLflow server address. If running locally without server, use "file:./training_workspace/mlruns"
-  tracking_uri: "http://localhost:5000" 
+  # For batch testing, use file system instead of server
+  tracking_uri: "file:./training_workspace/mlruns" 
   # Folder inside deployment where models will be downloaded. Don't remove it from .gitignore!
   cache_dir: "models_cache"
 
@@ -18,16 +19,21 @@ camera:
 segmentation:
   # Model settings
   model:
-    source: "mlflow" # or "local"
-    # Run ID from MFF_Benchmark_YOLOv8 or Training experiment
-    mlflow_run_id: "REPLACE_WITH_YOLO_RUN_ID" 
+    source: "local" # "mlflow" or "local"
+    # For local: path relative to deployment/ or absolute path
+    local_path: "data/models/yolo/best_n.pt"
+    # For mlflow: Run ID from MFF_Benchmark_YOLOv8 or Training experiment
+    mlflow_run_id: "fb4ae8d9ecff4476826899233e25e67a" 
     # Path to file within MLflow artifacts (usually weights/best.pt)
-    artifact_path: "weights/best.pt"
+    artifact_path: "best.pt"
   
   # Inference parameters
   img_size: 640
-  conf_threshold: 0.85
-  device: "cuda" # cuda, cpu, mps
+  conf_threshold: 0.85  # Понижено с 0.85 для получения большего количества детекций
+  device: "mps" # cuda, cpu, mps
+  # Filtering options
+  filter_border: True  # Отключить фильтрацию по границам (как в test.py)
+  border_margin: 5  # Отступ от границ для фильтрации (если filter_border=true)
 
 # --- Stage 2: Tracking ---
 tracker:
@@ -40,44 +46,58 @@ features:
   manual:
     # Scaler trained on training data (from prepare_fusion_split.py)
     scaler:
-      source: "mlflow"
+      source: "local" # or "mlflow"
+      # For local: path relative to deployment/ or absolute path
+      local_path: "data/models/fusion_split/feature_scaler.pkl"
+      # For mlflow:
       mlflow_run_id: "REPLACE_WITH_SCALER_RUN_ID"
       artifact_path: "feature_scaler.pkl"
   
   auto:
     # FusionNet weights (from train_fusion_mlflow.py)
     weights:
-      source: "mlflow"
+      source: "registry" # or "registry" or "local"
+      # For registry: use model_name and version/stage
+      model_name: "FusionNet_optimized"  # Name in Model Registry
+      version: 1  # Specific version number (optional, tried if stage fails)
+      stage: null  # Stage: Production, Staging, Archived (optional, tried first if set)
+      # For mlflow: use run_id and artifact_path
       mlflow_run_id: "REPLACE_WITH_FUSION_RUN_ID"
-      # Usually saved as 'best_model.pth' via log_artifact
-      artifact_path: "best_model.pth"
+      artifact_path: "best_model.pth"  # Usually saved as 'best_model.pth' via log_artifact
+      # For local: path relative to deployment/ or absolute path
+      local_path: null
     arch: "fusionnet50"
 
   pca:
     enabled: true
     # PCA transformer (from train_lightgbm_pca.py)
     model:
-      source: "mlflow"
-      mlflow_run_id: "REPLACE_WITH_PCA_RUN_ID"
-      artifact_path: "models/auto_pca.pkl"
+      source: "mlflow"  # Изменено с "local" на "mlflow"
+      local_path: "data/models/pca/auto_pca.pkl"  # Оставлено для fallback
+      mlflow_run_id: "c483a5136d024db4ba78bd4c4dca15e8"  # Обновлено
+      artifact_path: "auto_pca.pkl"  # Изменено с "data/models/pca/auto_pca.pkl" на "auto_pca.pkl"
     # Scaler for PCA (important! separate from manual scaler)
     scaler:
-      source: "mlflow"
-      mlflow_run_id: "REPLACE_WITH_PCA_RUN_ID"
-      artifact_path: "models/auto_scaler.pkl"
+      source: "mlflow"  # Изменено с "local" на "mlflow"
+      local_path: "data/models/pca/auto_scaler.pkl"  # Оставлено для fallback
+      mlflow_run_id: "c483a5136d024db4ba78bd4c4dca15e8"  # Обновлено
+      artifact_path: "auto_scaler.pkl"  # Изменено с "data/models/pca/auto_scaler.pkl" на "auto_scaler.pkl"
 
 # --- Stage 4: Weight Prediction (GBDT) ---
 gbdt:
   # LightGBM model
   model:
-    source: "mlflow"
+    source: "registry" # or "mlflow" or "local"
+    # For registry: use model_name and version/stage
+    model_name: "LightGBM_optimized"  # Name in Model Registry
+    version: 2  # Specific version number (optional)
+    stage: null  # Stage: Production, Staging, Archived (optional, tried first if set)
+    # For mlflow: use run_id and model_uri
     mlflow_run_id: "REPLACE_WITH_LGBM_RUN_ID"
-    # If using log_model, MLflow creates 'model' folder. 
-    # LightGBM can be loaded as folder or as model.txt file inside.
-    # For simplicity, load as generic artifact file if saved as pickle,
-    # or use MLflow loader.
-    load_method: "sklearn" # lightgbm/sklearn (object loading) or file (path)
-    model_uri: "model" # URI within run (usually just "model")
+    model_uri: "model"  # URI within run (usually just "model")
+    load_method: "mlflow"  # mlflow/lightgbm/sklearn (object loading) or file (path)
+    # For local: path relative to deployment/ or absolute path
+    local_path: null
 
 # --- Database ---
 database:

@@ -335,15 +335,198 @@ class ModelLoader:
             else:
                 device = 'cpu'
         
-        # Create model and load weights
-        model = fusonnet50()
-        state_dict = torch.load(model_path, map_location=device)
-        model.load_state_dict(state_dict)
+        # Load model from file
+        # Use weights_only=False because model may contain full object (not just state_dict)
+        # This is safe as we trust the source (MLflow artifacts)
+        # For cross-device compatibility, load to CPU first if target is MPS/CPU
+        # (models saved on CUDA may not map directly to MPS)
+        if device in ('mps', 'cpu') or not torch.cuda.is_available():
+            map_loc = 'cpu'  # Load to CPU first for cross-device compatibility
+        else:
+            map_loc = device
+        loaded_obj = torch.load(model_path, map_location=map_loc, weights_only=False)
+        
+        # Handle different save formats:
+        # 1. Full model object (nn.Module)
+        # 2. State dict (dict)
+        # 3. Checkpoint dict with 'model_state_dict' key
+        if isinstance(loaded_obj, torch.nn.Module):
+            # Full model object - use it directly
+            model = loaded_obj
+        elif isinstance(loaded_obj, dict):
+            # Check if it's a checkpoint dict or state_dict
+            if 'model_state_dict' in loaded_obj:
+                state_dict = loaded_obj['model_state_dict']
+            elif 'state_dict' in loaded_obj:
+                state_dict = loaded_obj['state_dict']
+            else:
+                # Assume it's a state_dict
+                state_dict = loaded_obj
+            
+            # Create model and load state_dict
+            model = fusonnet50()
+            model.load_state_dict(state_dict)
+        else:
+            raise TypeError(
+                f"Unexpected type loaded from {model_path}: {type(loaded_obj)}. "
+                "Expected nn.Module or dict (state_dict/checkpoint)."
+            )
+        
         model.eval()
         model = model.to(device)
         
         self.logger.info(f"FusionNet loaded on device: {device}")
         return model
+    
+    def load_fusionnet_from_registry(self, model_name: str, version: int = None, 
+                                    stage: str = None, device: str = None):
+        """
+        Load FusionNet model from MLflow Model Registry.
+        
+        Args:
+            model_name: Name of the registered model in Model Registry
+            version: Specific version number (optional, ignored if stage is provided)
+            stage: Model stage - Production, Staging, Archived (optional, takes precedence over version)
+            device: Device to load model on ('cuda', 'cpu', or None for auto-detect)
+            
+        Returns:
+            Loaded FusionNet model (PyTorch nn.Module)
+            
+        Raises:
+            RuntimeError: If model cannot be loaded
+        """
+        import torch
+        
+        # Try loading with different strategies: stage -> version -> latest
+        strategies = []
+        if stage:
+            strategies.append(("stage", f"models:/{model_name}/{stage}", f"{model_name} (stage: {stage})"))
+        if version:
+            strategies.append(("version", f"models:/{model_name}/{version}", f"{model_name} (version: {version})"))
+        if not strategies:
+            strategies.append(("latest", f"models:/{model_name}/latest", f"{model_name} (latest)"))
+        
+        last_error = None
+        for strategy_name, model_uri, log_msg in strategies:
+            try:
+                self.logger.info(f"Trying to load FusionNet from Model Registry: {log_msg}")
+                # Try to load using mlflow.pytorch.load_model first
+                # This works if model was registered using mlflow.pytorch.log_model
+                model = mlflow.pytorch.load_model(model_uri)
+                self.logger.info(f"FusionNet loaded successfully from Model Registry via {strategy_name}")
+                
+                # Determine device and move model
+                if device is None:
+                    if torch.cuda.is_available():
+                        device = 'cuda'
+                    elif torch.backends.mps.is_available():
+                        device = 'mps'
+                    else:
+                        device = 'cpu'
+                
+                model = model.to(device)
+                model.eval()
+                self.logger.info(f"FusionNet loaded on device: {device}")
+                return model
+            except Exception as e:
+                last_error = e
+                self.logger.warning(f"Failed to load with {strategy_name}: {e}")
+                # Continue to next strategy
+                continue
+        
+        # If all strategies failed, try fallback with artifact download
+        if last_error:
+            self.logger.warning(
+                "All registry strategies failed, trying artifact download fallback..."
+            )
+            # Try artifact download with the last attempted URI
+            try:
+                # Use the last strategy's URI for artifact download
+                last_uri = strategies[-1][1] if strategies else f"models:/{model_name}/latest"
+                temp_dir = mlflow.artifacts.download_artifacts(
+                    last_uri, dst_path=str(self.cache_dir)
+                )
+                temp_path = Path(temp_dir)
+                
+                # Find .pth file
+                pth_files = list(temp_path.rglob("*.pth"))
+                if not pth_files:
+                    raise FileNotFoundError(
+                        f"No .pth file found in model artifacts: {temp_dir}"
+                    )
+                
+                model_path = pth_files[0]
+                
+                # Import FusionNet architecture
+                from training_workspace.features.models.FusonNet import fusonnet50
+                
+                # Determine device
+                if device is None:
+                    if torch.cuda.is_available():
+                        device = 'cuda'
+                    elif torch.backends.mps.is_available():
+                        device = 'mps'
+                    else:
+                        device = 'cpu'
+                
+                # Load model from file
+                # Use weights_only=False because model may contain full object (not just state_dict)
+                # This is safe as we trust the source (MLflow artifacts)
+                # For cross-device compatibility, load to CPU first if target is MPS/CPU
+                # (models saved on CUDA may not map directly to MPS)
+                if device in ('mps', 'cpu') or not torch.cuda.is_available():
+                    map_loc = 'cpu'  # Load to CPU first for cross-device compatibility
+                else:
+                    map_loc = device
+                loaded_obj = torch.load(model_path, map_location=map_loc, weights_only=False)
+                
+                # Handle different save formats:
+                # 1. Full model object (nn.Module)
+                # 2. State dict (dict)
+                # 3. Checkpoint dict with 'model_state_dict' key
+                if isinstance(loaded_obj, torch.nn.Module):
+                    # Full model object - use it directly
+                    model = loaded_obj
+                elif isinstance(loaded_obj, dict):
+                    # Check if it's a checkpoint dict or state_dict
+                    if 'model_state_dict' in loaded_obj:
+                        state_dict = loaded_obj['model_state_dict']
+                    elif 'state_dict' in loaded_obj:
+                        state_dict = loaded_obj['state_dict']
+                    else:
+                        # Assume it's a state_dict
+                        state_dict = loaded_obj
+                    
+                    # Create model and load state_dict
+                    model = fusonnet50()
+                    model.load_state_dict(state_dict)
+                else:
+                    raise TypeError(
+                        f"Unexpected type loaded from {model_path}: {type(loaded_obj)}. "
+                        "Expected nn.Module or dict (state_dict/checkpoint)."
+                    )
+                
+                model.eval()
+                model = model.to(device)
+                
+                self.logger.info(
+                    f"FusionNet loaded on device: {device} (from artifact fallback)"
+                )
+                return model
+                
+            except Exception as e2:
+                self.logger.error(f"Failed to load FusionNet from Model Registry: {e2}")
+                raise RuntimeError(
+                    f"Cannot load FusionNet from Model Registry. "
+                    f"Tried all strategies and artifact download. "
+                    f"Last error: {last_error}, Artifact error: {e2}"
+                )
+        
+        # Should not reach here, but just in case
+        raise RuntimeError(
+            f"Cannot load FusionNet from Model Registry: {model_name}. "
+            "No strategies available."
+        )
     
     def load_pca(self, run_id: str, artifact_path: str):
         """
@@ -425,6 +608,70 @@ class ModelLoader:
                     f"Cannot load PCA: MLflow unavailable and no cached version. "
                     f"Error: {e}"
                 )
+    
+    def load_lightgbm_from_registry(self, model_name: str, version: int = None, 
+                                   stage: str = None, load_method: str = "mlflow"):
+        """
+        Load LightGBM model from MLflow Model Registry.
+        
+        Args:
+            model_name: Name of the registered model in Model Registry
+            version: Specific version number (optional, ignored if stage is provided)
+            stage: Model stage - Production, Staging, Archived (optional, takes precedence over version)
+            load_method: "mlflow" to use mlflow.lightgbm.load_model, "sklearn" for pickle files
+            
+        Returns:
+            Loaded LightGBM model
+            
+        Raises:
+            RuntimeError: If model cannot be loaded
+        """
+        # Construct model URI
+        if stage:
+            model_uri = f"models:/{model_name}/{stage}"
+            self.logger.info(f"Loading LightGBM from Model Registry: {model_name} (stage: {stage})")
+        elif version:
+            model_uri = f"models:/{model_name}/{version}"
+            self.logger.info(f"Loading LightGBM from Model Registry: {model_name} (version: {version})")
+        else:
+            model_uri = f"models:/{model_name}/latest"
+            self.logger.info(f"Loading latest LightGBM from Model Registry: {model_name}")
+        
+        if load_method == "mlflow":
+            # Use MLflow's LightGBM loader
+            try:
+                import mlflow.lightgbm
+                model = mlflow.lightgbm.load_model(model_uri)
+                self.logger.info("LightGBM loaded successfully from Model Registry")
+                return model
+            except Exception as e:
+                self.logger.error(f"Failed to load LightGBM from Model Registry: {e}")
+                raise RuntimeError(f"Cannot load LightGBM model from Model Registry. Error: {e}")
+        else:
+            # For sklearn/pickle, we need to download artifacts first
+            # This is a workaround - ideally models should be registered with log_model
+            try:
+                import joblib
+                import pickle
+                
+                # Download model artifacts
+                temp_dir = mlflow.artifacts.download_artifacts(model_uri, dst_path=str(self.cache_dir))
+                temp_path = Path(temp_dir)
+                
+                # Try to find model file
+                pkl_files = list(temp_path.rglob("*.pkl"))
+                if pkl_files:
+                    model = joblib.load(pkl_files[0])
+                else:
+                    # Try pickle
+                    with open(temp_path / "model.pkl", 'rb') as f:
+                        model = pickle.load(f)
+                
+                self.logger.info("LightGBM loaded successfully from Model Registry (as pickle)")
+                return model
+            except Exception as e:
+                self.logger.error(f"Failed to load LightGBM from Model Registry: {e}")
+                raise RuntimeError(f"Cannot load LightGBM model from Model Registry. Error: {e}")
     
     def load_lightgbm(self, run_id: str, model_uri: str = "model", 
                      load_method: str = "mlflow"):

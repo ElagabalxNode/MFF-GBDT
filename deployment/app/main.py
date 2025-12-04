@@ -22,8 +22,10 @@ if project_root not in sys.path:
 from deployment.core.segmentation import SegmentationInference
 from deployment.core.feature_extract import FeatureExtractor
 from deployment.core.predict_weight import WeightPredictor
-from deployment.core.tracking import BroilerTracker, TrackBuffer
 from deployment.database import InferenceDB
+
+# Tracking imports are done conditionally in live mode only
+# to avoid requiring ByteTrack for batch processing
 
 
 class InferenceConsumer(threading.Thread):
@@ -64,7 +66,9 @@ class InferenceConsumer(threading.Thread):
             config=config
         )
         
-        # Initialize tracker
+        # Initialize tracker (lazy import to avoid requiring ByteTrack in batch mode)
+        from deployment.core.tracking import BroilerTracker, TrackBuffer
+        
         tracker_config = config.get('tracker', {})
         camera_config = config.get('camera', {})
         frame_rate = camera_config.get('fps', 30)
@@ -77,7 +81,9 @@ class InferenceConsumer(threading.Thread):
         
         # Initialize feature extractor
         self.logger.info("Loading feature extractor...")
-        self.feature_extractor = FeatureExtractor(config=config, device=seg_config.get('device'))
+        self.feature_extractor = FeatureExtractor(
+            config=config, device=seg_config.get('device')
+        )
         
         # Initialize weight predictor
         self.logger.info("Loading weight predictor...")
@@ -279,10 +285,13 @@ class InferenceConsumer(threading.Thread):
 
 class MVPInferencePipeline:
     """
-    Legacy batch inference pipeline for processing images from files.
+    Batch inference pipeline for processing images from files.
     
     NOTE: This class uses the new MLflow-based API but processes static images.
     For real-time inference from camera, use InferenceConsumer instead.
+    
+    IMPORTANT: Tracking is NOT used in batch mode - each image is processed independently.
+    Tracking is only used in live mode (InferenceConsumer) for video streams.
     """
     
     def __init__(self, config: dict):
@@ -297,6 +306,7 @@ class MVPInferencePipeline:
         
         # Initialize components using new MLflow-based API
         print("Loading models from MLflow...")
+        print("NOTE: Tracking is DISABLED in batch mode (not needed for static images)")
         seg_config = config.get('segmentation', {})
         self.segmentation = SegmentationInference(
             device=seg_config.get('device'),
@@ -317,7 +327,7 @@ class MVPInferencePipeline:
         self.db = InferenceDB(db_path=db_path)
         print(f"Database enabled: {db_path}")
         
-        print("Pipeline initialized")
+        print("Pipeline initialized (batch mode - no tracking)")
     
     def process_image(self, image_path: str, depth_image_path: str = None, 
                      save_results: bool = True) -> dict:
@@ -344,7 +354,7 @@ class MVPInferencePipeline:
         rgb_image = cv2.imread(image_path)
         if rgb_image is None:
             raise ValueError(f"Could not load image: {image_path}")
-        rgb_image = cv2.cvtColor(rgb_image, cv2.COLOR_BGR2RGB)
+        # rgb_image = cv2.cvtColor(rgb_image, cv2.COLOR_BGR2RGB)
         
         # Load depth image if provided
         depth_image_z16 = None
@@ -353,10 +363,21 @@ class MVPInferencePipeline:
             if depth_image_z16 is None:
                 print(f"Warning: Could not load depth image: {depth_image_path}")
         
-        # Stage 1: Segmentation
+        # Stage 1: Segmentation (no tracking in batch mode)
         print(f"Segmenting image: {image_path}")
-        instances_seg = self.segmentation.segment_frame(rgb_image)
-        print(f"Found {len(instances_seg)} instances")
+        
+        # Create visualization path
+        vis_dir = Path("deployment/data/visualizations")
+        vis_dir.mkdir(parents=True, exist_ok=True)
+        img_name = Path(image_path).stem
+        vis_path = vis_dir / f"{img_name}_segmentation.png"
+        
+        instances_seg = self.segmentation.segment_frame(
+            rgb_image, 
+            visualize=True, 
+            save_path=str(vis_path)
+        )
+        print(f"Found {len(instances_seg)} instances (visualization: {vis_path})")
         
         if not instances_seg:
             return {
@@ -367,6 +388,7 @@ class MVPInferencePipeline:
             }
         
         # Stage 2 & 3: Features + Weight prediction for each instance
+        # NOTE: No tracking here - each instance is processed independently
         instances_results = []
         for i, inst in enumerate(instances_seg):
             try:
@@ -482,18 +504,29 @@ def setup_logging(log_dir: str = 'logs'):
     os.makedirs(log_dir, exist_ok=True)
     log_file = os.path.join(log_dir, 'pipeline.log')
     
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.StreamHandler(),
-            logging.handlers.RotatingFileHandler(
-                log_file, 
-                maxBytes=10*1024*1024,  # 10 MB
-                backupCount=5
-            )
-        ]
+    # Create handlers
+    stream_handler = logging.StreamHandler()
+    file_handler = logging.handlers.RotatingFileHandler(
+        log_file,
+        maxBytes=10*1024*1024,  # 10 MB
+        backupCount=5
     )
+    
+    # Set format
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+    stream_handler.setFormatter(formatter)
+    file_handler.setFormatter(formatter)
+    
+    # Configure root logger
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.DEBUG)  # Changed from INFO to DEBUG
+    root_logger.addHandler(stream_handler)
+    root_logger.addHandler(file_handler)
+    
+    # Ensure file handler flushes immediately
+    file_handler.flush()
 
 
 def main():
@@ -569,24 +602,37 @@ def main():
             print("Pipeline stopped")
             
     else:
-        # Batch/File Mode
+        # Batch/File Mode (no tracking - each image processed independently)
         if not args.input:
-             parser.error("the following arguments are required: --input (unless --live is used)")
+            parser.error(
+                "the following arguments are required: "
+                "--input (unless --live is used)"
+            )
+
+        print("=" * 60)
+        print("BATCH MODE: Processing static images")
+        print("Tracking: DISABLED (not needed for static images)")
+        print("=" * 60)
 
         # Initialize pipeline
         pipeline = MVPInferencePipeline(config)
-        
+
         # Process input
         input_path = Path(args.input)
         if input_path.is_file():
             # Single image
             results = pipeline.process_image(str(input_path))
-            print(f"\nResults:")
+            print("\nResults:")
             print(f"  Image: {results['image_path']}")
             print(f"  Instances: {results['num_instances']}")
             print(f"  Processing time: {results['processing_time']:.2f}s")
             for i, inst in enumerate(results['instances']):
-                print(f"  Instance {i+1}: {inst['predicted_weight']:.3f} kg (confidence: {inst['confidence_score']:.2f})")
+                weight = inst['predicted_weight']
+                conf = inst['confidence_score']
+                print(
+                    f"  Instance {i+1}: {weight:.3f} kg "
+                    f"(confidence: {conf:.2f})"
+                )
         elif input_path.is_dir():
             # Batch processing
             image_files = list(input_path.glob('*.png')) + list(input_path.glob('*.jpg'))
