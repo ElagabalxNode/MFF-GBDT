@@ -77,4 +77,4 @@ data/
 fix_mlflow_paths.py
 deployment/models_cache/
 logs/
-deployment/config.yaml
+*.yaml

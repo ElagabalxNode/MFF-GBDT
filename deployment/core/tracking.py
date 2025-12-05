@@ -1,6 +1,6 @@
 """
 Tracking module for MVP inference pipeline
-Implements ByteTrack-based multi-object tracking with heuristics filtering
+Adapts YOLOv8 BoT-SORT/ByteTrack output and applies heuristics filtering
 """
 
 import sys
@@ -14,73 +14,31 @@ project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-try:
-    from yolox.tracker.byte_tracker import BYTETracker
-except ImportError:
-    try:
-        from byte_tracker import BYTETracker
-    except ImportError:
-        try:
-            from bytetrack import BYTETracker
-        except ImportError:
-            raise ImportError(
-                "ByteTrack not found. Install with: "
-                "pip install byte-track or clone ByteTrack repo"
-            )
-
 
 class BroilerTracker:
     """
-    Multi-object tracker for broiler chickens using ByteTrack algorithm.
+    Wrapper for YOLOv8 built-in tracking results.
     
     Features:
-    - Assigns persistent track_id to detected objects
+    - Accepts pre-assigned track_ids from YOLO
     - Calculates Solidity (ContourArea / HullArea) for heuristics filtering
     - Filters out frames with spread wings (low solidity)
     """
     
     def __init__(self, min_solidity: float = 0.90, frame_rate: int = 30):
         """
-        Initialize tracker.
+        Initialize tracker wrapper.
         
         Args:
             min_solidity: Minimum solidity threshold (0.0-1.0).
                           If solidity < min_solidity, skip feature extraction
-            frame_rate: Camera frame rate (for ByteTrack internal timing)
+            frame_rate: Not used for YOLO built-in tracker, kept for API compatibility
         """
         self.min_solidity = min_solidity
-        self.frame_rate = frame_rate
         self.logger = logging.getLogger(self.__class__.__name__)
         
-        # Initialize ByteTrack
-        # ByteTrack parameters (can be tuned):
-        # - track_thresh: detection confidence threshold
-        # - track_buffer: number of frames to keep lost tracks
-        # - match_thresh: IoU threshold for matching
-        # - frame_rate: frames per second
-        # BYTETracker can be initialized with args object or parameters
-        try:
-            # Try with parameters (for byte-track package)
-            self.tracker = BYTETracker(
-                track_thresh=0.5,
-                track_buffer=30,
-                match_thresh=0.8,
-                frame_rate=frame_rate
-            )
-        except TypeError:
-            # Try with args object (for yolox.tracker version)
-            class Args:
-                def __init__(self, fr):
-                    self.track_thresh = 0.5
-                    self.track_buffer = 30
-                    self.match_thresh = 0.8
-                    self.frame_rate = fr
-            args = Args(frame_rate)
-            self.tracker = BYTETracker(args)
-        
         self.logger.info(
-            f"BroilerTracker initialized: min_solidity={min_solidity}, "
-            f"frame_rate={frame_rate}"
+            f"BroilerTracker (YOLO Built-in) initialized: min_solidity={min_solidity}"
         )
     
     def calculate_solidity(self, mask: np.ndarray) -> float:
@@ -130,135 +88,58 @@ class BroilerTracker:
     
     def update(self, detections: list) -> list:
         """
-        Update tracker with new detections and assign track_ids.
+        Process detections that already have track_ids from YOLO.
+        Calculates solidity and sets skip flags.
         
         Args:
             detections: List of detection dicts, each containing:
                 - 'box': [x1, y1, x2, y2]
                 - 'score': confidence score (float)
-                - 'mask': binary mask (np.ndarray, optional)
+                - 'mask': binary mask (np.ndarray)
+                - 'track_id': int (optional, -1 if not tracked)
                 
         Returns:
-            List of tracked objects, each containing:
-                - All original detection fields
-                - 'track_id': assigned track ID (int)
+            List of tracked objects, same as input but with:
                 - 'solidity': calculated solidity (float)
                 - 'skip_features': bool (True if solidity < min_solidity)
         """
         if not detections:
             return []
         
-        # Prepare detections for ByteTrack
-        # ByteTrack expects: [x1, y1, x2, y2, score] format
-        dets = []
-        for det in detections:
-            box = det['box']
-            score = det['score']
-            # ByteTrack format: [x1, y1, x2, y2, score]
-            dets.append([box[0], box[1], box[2], box[3], score])
-        
-        dets = np.array(dets, dtype=np.float32)
-        
-        # Update tracker
-        # ByteTrack.update expects (dets, img_info, img_size)
-        # img_info and img_size can be None for basic tracking
-        try:
-            online_targets = self.tracker.update(dets, None, None)
-        except TypeError:
-            # Some versions only need dets
-            online_targets = self.tracker.update(dets)
-        
-        # Map track_ids back to detections
         tracked_detections = []
         
-        for target in online_targets:
-            # Extract track_id and bbox from ByteTrack output
-            track_id = int(target.track_id)
-            # ByteTrack returns tlwh format [x, y, w, h]
-            if hasattr(target, 'tlwh'):
-                tlwh = target.tlwh
-            elif hasattr(target, 'tlbr'):
-                # Some versions return tlbr [x1, y1, x2, y2]
-                x1, y1, x2, y2 = target.tlbr
-                w = x2 - x1
-                h = y2 - y1
-            else:
-                # Fallback: try to get from other attributes
-                x1, y1, w, h = target.bbox if hasattr(target, 'bbox') else (0, 0, 0, 0)
+        for det in detections:
+            # Create a copy to avoid modifying original in place
+            tracked_det = det.copy()
             
-            if 'x2' not in locals():
-                x1, y1, w, h = tlwh
-                x2 = x1 + w
-                y2 = y1 + h
+            # Ensure track_id exists (if not provided by YOLO for some reason)
+            if 'track_id' not in tracked_det or tracked_det['track_id'] is None:
+                 # If no track ID, we can't use it for weight aggregation properly,
+                 # but we still pass it through.
+                 # Using -1 to indicate no track.
+                 tracked_det['track_id'] = -1
             
-            # Find matching detection by bbox IoU
-            best_match_idx = None
-            best_iou = 0.0
-            
-            for idx, det in enumerate(detections):
-                det_box = det['box']
-                iou = self._calculate_iou(
-                    [x1, y1, x2, y2],
-                    det_box
+            # Calculate solidity if mask available
+            if 'mask' in tracked_det:
+                solidity = self.calculate_solidity(tracked_det['mask'])
+                tracked_det['solidity'] = solidity
+                tracked_det['skip_features'] = (
+                    solidity < self.min_solidity
                 )
-                if iou > best_iou:
-                    best_iou = iou
-                    best_match_idx = idx
+            else:
+                tracked_det['solidity'] = 1.0  # Assume solid if no mask
+                tracked_det['skip_features'] = False
             
-            if best_match_idx is not None:
-                # Copy detection data
-                tracked_det = detections[best_match_idx].copy()
-                tracked_det['track_id'] = track_id
-                
-                # Calculate solidity if mask available
-                if 'mask' in tracked_det:
-                    solidity = self.calculate_solidity(tracked_det['mask'])
-                    tracked_det['solidity'] = solidity
-                    tracked_det['skip_features'] = (
-                        solidity < self.min_solidity
-                    )
-                else:
-                    tracked_det['solidity'] = 1.0  # Assume solid if no mask
-                    tracked_det['skip_features'] = False
-                
-                tracked_detections.append(tracked_det)
+            # Only include if it has a valid track ID (optional check, 
+            # usually we want everything but maybe filter non-tracked?)
+            # For now, we keep everything, but main.py might handle track_id=-1 gracefully 
+            # (it creates a new track for every -1 or ignores it?)
+            # main.py uses track_id as key. If -1, it would collide.
+            # However, YOLO usually assigns IDs. If it doesn't, it means it's a lost track or new detection.
+            
+            tracked_detections.append(tracked_det)
         
         return tracked_detections
-    
-    def _calculate_iou(self, box1: list, box2: list) -> float:
-        """
-        Calculate Intersection over Union (IoU) between two boxes.
-        
-        Args:
-            box1: [x1, y1, x2, y2]
-            box2: [x1, y1, x2, y2]
-            
-        Returns:
-            IoU value (0.0-1.0)
-        """
-        x1_1, y1_1, x2_1, y2_1 = box1
-        x1_2, y1_2, x2_2, y2_2 = box2
-        
-        # Calculate intersection
-        x1_i = max(x1_1, x1_2)
-        y1_i = max(y1_1, y1_2)
-        x2_i = min(x2_1, x2_2)
-        y2_i = min(y2_1, y2_2)
-        
-        if x2_i <= x1_i or y2_i <= y1_i:
-            return 0.0
-        
-        intersection = (x2_i - x1_i) * (y2_i - y1_i)
-        
-        # Calculate union
-        area1 = (x2_1 - x1_1) * (y2_1 - y1_1)
-        area2 = (x2_2 - x1_2) * (y2_2 - y1_2)
-        union = area1 + area2 - intersection
-        
-        if union == 0:
-            return 0.0
-        
-        return intersection / union
 
 
 class TrackBuffer:
@@ -292,6 +173,10 @@ class TrackBuffer:
             track_id: Track ID
             weight: Predicted weight (kg)
         """
+        if track_id == -1:
+             # Ignore detections without valid track ID
+             return
+
         if track_id not in self.tracks:
             self.tracks[track_id] = []
             self.track_start_frame[track_id] = self.current_frame
@@ -361,4 +246,3 @@ class TrackBuffer:
             True if track exists
         """
         return track_id in self.tracks
-

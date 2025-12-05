@@ -13,6 +13,8 @@ import logging
 import logging.handlers
 from datetime import datetime
 from pathlib import Path
+import cv2
+import numpy as np
 
 # Add project root to Python path
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -47,7 +49,7 @@ class InferenceConsumer(threading.Thread):
         
         Args:
             input_queue: Queue with frames from camera.
-                       Format: (frame_id, rgb_image, depth_image_z16)
+                       Format: (frame_id, bgr_image, depth_image_z16)
             config: Configuration dict
             name: Thread name
         """
@@ -131,29 +133,52 @@ class InferenceConsumer(threading.Thread):
                 except queue.Empty:
                     continue
                 
-                frame_id, rgb_image, depth_image_z16 = frame_data
+                frame_id, bgr_image, depth_image_z16 = frame_data
                 
                 # Update track buffer current frame
                 self.track_buffer.set_current_frame(frame_id)
                 
                 # Stage 2.1: Segmentation (YOLO)
-                instances = self.segmentation.segment_frame(rgb_image)
+                # Always visualize in live mode
+                instances, vis_image = self.segmentation.segment_frame(
+                    bgr_image, visualize=True
+                )
                 
-                if not instances:
-                    # No detections, check for lost tracks
+                if not instances and not vis_image is None:
+                    # No detections, still show image
+                    # vis_image is already BGR (returned by segment_frame)
+                    cv2.imshow("Live Inference", vis_image)
+                    if cv2.waitKey(1) & 0xFF == ord('q'):
+                         self.running = False
+                         break
+                    
+                    # Check for lost tracks
                     self._process_lost_tracks(set())
                     continue
+                
+                if not instances:
+                     # No detections and no image (should not happen usually)
+                     continue
                 
                 # Stage 2.2: Tracking & Filtering
                 # tracker.update() already calculates solidity and sets skip_features flag
                 tracked_instances = self.tracker.update(instances)
                 
-                # Get current active track IDs
-                current_active_tracks = {inst['track_id'] for inst in tracked_instances}
+                # Get current active track IDs (exclude -1 which means untracked)
+                current_active_tracks = {
+                    inst['track_id'] for inst in tracked_instances 
+                    if inst.get('track_id', -1) != -1
+                }
                 
+                # Dictionary to store weights for visualization
+                weights_for_vis = {}
+
                 # Stage 3-4: Feature Extraction & Weight Prediction
                 for inst in tracked_instances:
-                    track_id = inst['track_id']
+                    track_id = inst.get('track_id', -1)
+                    
+                    if track_id == -1:
+                        continue
                     
                     # Skip if features should be skipped (low solidity)
                     if inst.get('skip_features', False):
@@ -185,6 +210,9 @@ class InferenceConsumer(threading.Thread):
                         # Stage 4: Predict weight
                         weight = self.weight_predictor.predict(features)
                         
+                        # Store for visualization
+                        weights_for_vis[track_id] = weight
+
                         # Stage 5: Add to track buffer
                         self.track_buffer.add_weight(track_id, weight)
                         
@@ -210,7 +238,56 @@ class InferenceConsumer(threading.Thread):
                         )
                         # Continue with other tracks
                         continue
-                
+
+                # Draw weights on visualization
+                if vis_image is not None:
+                    # vis_image is already BGR (returned by segment_frame)
+                    vis_image_bgr = vis_image
+                    
+                    # --- Depth Visualization ---
+                    # Normalize depth image for visualization
+                    # Range 0-3000mm (3m) usually covers everything relevant
+                    depth_vis = cv2.normalize(depth_image_z16, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+                    depth_vis = cv2.applyColorMap(depth_vis, cv2.COLORMAP_JET)
+                    
+                    # Log depth statistics periodically (every 30 frames ~ 1 sec)
+                    if frame_id % 30 == 0:
+                        d_min = np.min(depth_image_z16)
+                        d_max = np.max(depth_image_z16)
+                        d_mean = np.mean(depth_image_z16)
+                        d_center = depth_image_z16[depth_image_z16.shape[0]//2, depth_image_z16.shape[1]//2]
+                        self.logger.debug(
+                            f"Depth stats (mm): min={d_min}, max={d_max}, mean={d_mean:.1f}, center={d_center}"
+                        )
+                        # Add depth stats text to image
+                        cv2.putText(depth_vis, f"Center: {d_center}mm", (10, 30), 
+                                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                        cv2.putText(depth_vis, f"Range: {d_min}-{d_max}mm", (10, 60), 
+                                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+
+                    for inst in tracked_instances:
+                        track_id = inst.get('track_id', -1)
+                        box = inst.get('box')
+                        
+                        if track_id in weights_for_vis:
+                            weight = weights_for_vis[track_id]
+                            label = f"{weight:.3f} kg"
+                            
+                            # Draw label below the box
+                            cv2.putText(vis_image_bgr, label, 
+                                       (int(box[0]), int(box[3]) + 20), 
+                                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, 
+                                       (0, 255, 255), 2)
+                    
+                    # Combine RGB (with detections) and Depth side-by-side
+                    # Resize depth to match RGB height if needed (should be same though)
+                    combined_vis = np.hstack((vis_image_bgr, depth_vis))
+                    
+                    cv2.imshow("Live Inference (RGB + Depth)", combined_vis)
+                    if cv2.waitKey(1) & 0xFF == ord('q'):
+                        self.running = False
+                        break
+
                 # Stage 5: Process lost tracks (tracks that were active before but not now)
                 self._process_lost_tracks(current_active_tracks)
                 
@@ -476,7 +553,7 @@ def load_config(config_path: str = None) -> dict:
         config_path = os.path.join(deployment_dir, 'config.yaml')
     
     if os.path.exists(config_path):
-        with open(config_path, 'r') as f:
+        with open(config_path, 'r', encoding='utf-8') as f:
             config = yaml.safe_load(f)
         
         # Resolve relative database path

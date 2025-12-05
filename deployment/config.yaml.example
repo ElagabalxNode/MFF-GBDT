@@ -9,8 +9,8 @@ mlflow:
 camera:
   provider: "orbbec"        # or "mock" for video testing
   device_index: 0
-  width: 1280
-  height: 720
+  width: 640  # Changed from 1280 to 640 for better compatibility
+  height: 480 # Changed from 720 to 480
   fps: 30
   align_mode: "HW_MODE"     # Hardware synchronization of RGB and Depth
 
@@ -31,7 +31,7 @@ segmentation:
 
 # --- Stage 2: Tracking ---
 tracker:
-  type: "bytetrack"
+  type: "botsort" # Built-in YOLO tracker (BoT-SORT or ByteTrack)
   filters:
     min_solidity: 0.90 # Filter for "spread wings"
 

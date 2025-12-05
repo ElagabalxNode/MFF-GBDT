@@ -10,8 +10,8 @@ mlflow:
 camera:
   provider: "orbbec"        # or "mock" for video testing
   device_index: 0
-  width: 1280
-  height: 720
+  width: 640  # Changed from 1280 to 640 for better compatibility
+  height: 480 # Changed from 720 to 480
   fps: 30
   align_mode: "HW_MODE"     # Hardware synchronization of RGB and Depth
 
@@ -30,14 +30,14 @@ segmentation:
   # Inference parameters
   img_size: 640
   conf_threshold: 0.85  # Понижено с 0.85 для получения большего количества детекций
-  device: "mps" # cuda, cpu, mps
+  device: "cuda" # cuda, cpu, mps
   # Filtering options
   filter_border: True  # Отключить фильтрацию по границам (как в test.py)
   border_margin: 5  # Отступ от границ для фильтрации (если filter_border=true)
 
 # --- Stage 2: Tracking ---
 tracker:
-  type: "bytetrack"
+  type: "botsort" # Built-in YOLO tracker (BoT-SORT or ByteTrack)
   filters:
     min_solidity: 0.90 # Filter for "spread wings"
 

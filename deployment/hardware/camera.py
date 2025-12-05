@@ -59,7 +59,12 @@ class OrbbecCamera:
             # 4. Enable alignment (Align)
             # This is critical: overlays depth map onto RGB frame.
             # Now pixel (x,y) in color corresponds to pixel (x,y) in depth.
-            self.config.set_align_mode(OBAlignMode.HW_MODE)
+            try:
+                self.config.set_align_mode(OBAlignMode.HW_MODE)
+            except OBError as e:
+                 # Fallback to SW_MODE if HW_MODE is not supported
+                self.logger.warning(f"HW Align failed ({e}), falling back to SW Align")
+                self.config.set_align_mode(OBAlignMode.SW_MODE)
 
         except Exception as e:
             self.logger.error(f"Failed to initialize camera: {e}")
@@ -187,7 +192,7 @@ class CameraProducer(threading.Thread):
         Initialize camera producer thread.
         
         Args:
-            input_queue: Queue to put frames into. Format: (frame_id, rgb_image, depth_image_z16)
+            input_queue: Queue to put frames into. Format: (frame_id, bgr_image, depth_image_z16)
             camera_config: Camera configuration dict with width, height, fps, etc.
             max_queue_size: Maximum queue size. If exceeded, old frames are dropped.
         """
@@ -238,14 +243,14 @@ class CameraProducer(threading.Thread):
                     time.sleep(frame_interval - elapsed)
                 last_frame_time = time.time()
                 
-                # Get frames from camera (returns BGR, need to convert to RGB)
+                # Get frames from camera (returns BGR)
                 bgr_image, depth_image_z16 = self.camera.get_frames()
                 
                 if bgr_image is None or depth_image_z16 is None:
                     continue
                 
-                # Convert BGR to RGB for pipeline processing
-                rgb_image = cv2.cvtColor(bgr_image, cv2.COLOR_BGR2RGB)
+                # Pass BGR image directly to pipeline (matching batch mode behavior)
+                # Do not convert to RGB, as YOLO/OpenCV pipeline expects BGR
                 
                 # Drop old frames if queue is full (FPS control)
                 if self.input_queue.qsize() >= self.max_queue_size:
@@ -258,8 +263,8 @@ class CameraProducer(threading.Thread):
                     except queue.Empty:
                         pass
                 
-                # Put new frame in queue: (frame_id, rgb_image, depth_image_z16)
-                frame_data = (self.frame_id, rgb_image, depth_image_z16)
+                # Put new frame in queue: (frame_id, bgr_image, depth_image_z16)
+                frame_data = (self.frame_id, bgr_image, depth_image_z16)
                 self.input_queue.put(frame_data, block=False)
                 self.frame_id += 1
                 

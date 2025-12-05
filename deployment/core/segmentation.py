@@ -203,32 +203,35 @@ class SegmentationInference:
         
         return instances
     
-    def segment_frame(self, rgb_image: np.ndarray, visualize: bool = False, save_path: str = None) -> list:
+    def segment_frame(self, bgr_image: np.ndarray, visualize: bool = False, save_path: str = None):
         """
-        Segment a single RGB frame (numpy array) and return instances.
+        Segment a single BGR frame (numpy array) and return instances.
         
         This method is designed for real-time inference from camera stream.
         Includes Level 1 filtering: confidence threshold and border checks.
         
         Args:
-            rgb_image: RGB image as numpy array (H, W, 3), dtype uint8
+            bgr_image: BGR image as numpy array (H, W, 3), dtype uint8
             visualize: If True, create visualization image with all detections
             save_path: Path to save visualization (if visualize=True)
             
         Returns:
-            List of dicts, each containing:
-                - 'box': bounding box [x1, y1, x2, y2]
-                - 'mask': binary mask (numpy array, uint8)
-                - 'maskImg': masked image (numpy array, RGB)
-                - 'score': confidence score
+            If visualize=False:
+                List of dicts, each containing:
+                    - 'box': bounding box [x1, y1, x2, y2]
+                    - 'mask': binary mask (numpy array, uint8)
+                    - 'maskImg': masked image (numpy array, BGR)
+                    - 'score': confidence score
+            If visualize=True:
+                Tuple (instances, vis_image_bgr)
         """
         import logging
         logger = logging.getLogger(self.__class__.__name__)
         
-        if rgb_image is None or rgb_image.size == 0:
-            return []
+        if bgr_image is None or bgr_image.size == 0:
+            return ([] if not visualize else ([], None))
         
-        img_height, img_width = rgb_image.shape[:2]
+        img_height, img_width = bgr_image.shape[:2]
         
         # Use a threshold slightly lower than the target threshold to filter
         # noise early. This prevents clogging the max_det buffer with
@@ -240,11 +243,14 @@ class SegmentationInference:
         )
         
         # Run YOLOv8 inference on numpy array
-        # YOLO expects RGB format, which we have
-        results = self.model.predict(
-            rgb_image,
+        # YOLO (Ultralytics) expects BGR format when passed a numpy array
+        # Use track() for tracking (BoT-SORT is default or configurable)
+        results = self.model.track(
+            bgr_image,
             device=self.device,
             conf=yolo_conf,
+            persist=True,
+            tracker="botsort.yaml",
             verbose=False
         )
         
@@ -256,12 +262,16 @@ class SegmentationInference:
         scores = result_obj.boxes.conf.cpu().numpy()
         masks = result_obj.masks  # YOLO masks object
         
+        # Get track IDs if available
+        track_ids = None
+        if result_obj.boxes.is_track and result_obj.boxes.id is not None:
+            track_ids = result_obj.boxes.id.cpu().numpy()
+        
         # Create visualization if requested
-        vis_image = None
+        vis_image_bgr = None
         if visualize:
-            vis_image = rgb_image.copy()
-            # Convert RGB to BGR for OpenCV drawing
-            vis_image_bgr = cv2.cvtColor(vis_image, cv2.COLOR_RGB2BGR)
+            # Input is BGR, so copy is BGR
+            vis_image_bgr = bgr_image.copy()
         
         total_detections = len(boxes)
         filtered_by_conf = 0
@@ -327,23 +337,30 @@ class SegmentationInference:
             _, mask_thresh = cv2.threshold(np.uint8(mask), 100, 255, 0)
             mask_3d = np.dstack((mask_thresh, mask_thresh, mask_thresh))
             
-            # Create maskImg (bird on black background) - RGB format
-            maskImg = cv2.bitwise_and(rgb_image, mask_3d)
+            # Create maskImg (bird on black background) - BGR format (since input is BGR)
+            maskImg = cv2.bitwise_and(bgr_image, mask_3d)
             
             # Extract bounding box
             box = [int(x1), int(y1), int(x2), int(y2)]
             
+            # Get track ID for this instance
+            track_id = -1
+            if track_ids is not None and idx < len(track_ids):
+                track_id = int(track_ids[idx])
+            
             instances.append({
                 'box': box,
                 'mask': mask_thresh,  # Binary mask
-                'maskImg': maskImg,  # Masked image (RGB)
-                'score': score
+                'maskImg': maskImg,  # Masked image (BGR)
+                'score': score,
+                'track_id': track_id
             })
             
             # Draw accepted detection on visualization
             if visualize:
                 cv2.rectangle(vis_image_bgr, (box[0], box[1]), (box[2], box[3]), (0, 255, 0), 2)
-                cv2.putText(vis_image_bgr, f"ACCEPTED {score:.2f}", (box[0], box[1] - 5), 
+                label = f"ID:{track_id} {score:.2f}" if track_id != -1 else f"ACCEPTED {score:.2f}"
+                cv2.putText(vis_image_bgr, label, (box[0], box[1] - 5), 
                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
         
         # Log statistics with more details
@@ -370,9 +387,11 @@ class SegmentationInference:
                 )
         
         # Save visualization if requested
-        if visualize and save_path:
-            cv2.imwrite(save_path, vis_image_bgr)
-            logger.info(f"Segmentation visualization saved to: {save_path}")
+        if visualize:
+            if save_path:
+                cv2.imwrite(save_path, vis_image_bgr)
+                logger.info(f"Segmentation visualization saved to: {save_path}")
+            return instances, vis_image_bgr
         
         return instances
     
